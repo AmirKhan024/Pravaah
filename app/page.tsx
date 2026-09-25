@@ -89,7 +89,7 @@ export default function Home() {
       <section className="border-y border-line bg-panel/40">
         <div className="mx-auto max-w-[1320px] px-6 py-16 sm:px-10">
           <p className="max-w-[980px] font-display text-[34px] leading-[1.15] text-text sm:text-[44px]">
-            Every other system watches the crush happen. <span className="text-brass">Pravaah tells you forty minutes early, proves why, and tells you how long you have left to stop it.</span>
+            Every other system watches the crush happen. <span className="text-brass">Pravaah tells you before it happens, proves why, and tells you how long you have left to stop it.</span>
           </p>
           <div className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-5">
             {STEPS.map((s) => (

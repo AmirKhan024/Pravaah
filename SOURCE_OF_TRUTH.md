@@ -27,7 +27,9 @@
 On 4 June 2025, eleven people died outside a stadium in Bengaluru. The crowd was not violent. It arrived faster than the gates could take it, and nobody knew until it was too late. **Pravaah is a flight simulator for event organisers.** It rehearses the whole evening before it happens, finds the minute the crowd will break, proves the cause, tests every fix across hotels, trains, roads and gates, and tells you **how many minutes you have left to act**. No AI invents a number. Every figure comes from running the evening.
 
 **Positioning line (use it everywhere):**
-> Every other team watches the crush happen. Pravaah tells you 40 minutes early, proves why, and tells you how long you have left to stop it.
+> Every other team watches the crush happen. Pravaah tells you before it happens, proves why, and tells you how long you have left to stop it.
+
+*(Earlier drafts said "40 minutes early." Drop the number: the Decision Clock's lead time is a live output of the simulation — it varies by scenario and run, and on DY Patil it's usually well over an hour. The clock on screen is the proof; the headline shouldn't compete with it on a figure that can drift. If you need a number in a specific deck slide, read it off the Decision Clock in that moment, never write one into copy.)*
 
 ---
 
@@ -329,7 +331,7 @@ Exact values are in `reference/prototype.html` (`const SCENARIO_A`). Copy them v
 - 84,000 capacity. Tick 0 = 14:00 (`t0Min 840`), horizon 540 (to 23:00). Gates open tick 120 (16:00). Show tick 330 (19:30). laneRate 28.
 - **Gates:** Gate 3 (12 lanes, fed by West forecourt, 1,600 m²), Gate 1 (10 lanes, North forecourt 3,400 m²), Gate 5 (8 lanes, East forecourt 2,800 m²).
 - **Transit:** Nerul station, Seawoods Darave, Palm Beach drop-off, Sector 20 parking.
-- **Hotels:** Vashi 2,400 rooms (2,280 occupied), CBD Belapur 1,800 (1,750), Kharghar 2,100 (1,180), Panvel 1,600 (640). About 2,050 rooms empty far away while near clusters are full.
+- **Hotels:** Vashi 2,400 rooms (2,280 occupied), CBD Belapur 1,800 (1,750), Kharghar 2,100 (1,180), Panvel 1,600 (640). That's 920 + 960 = **1,880 rooms empty** in Kharghar and Panvel while Vashi and Belapur are full. (The prototype's own hand-written UI copy says "2,050" in a couple of places — that number was never right even against the prototype's own data, and the rebuilt app computes this figure live from `Zone.rooms`/`Zone.occupied` instead of stating it, so it can't drift again.)
 - **Cohorts (9):** Nerul rail 24,000 (pulsed), Seawoods rail 13,000 (pulsed), cabs Palm Beach 8,600, late bookings 1,400, self-drive 15,000, Vashi 8,000, Belapur 5,000, Kharghar 6,000, Panvel 3,000.
 - **The story the numbers tell:** ~47,000 people route to Gate 3, ~14,000 to Gate 5. Gate 3 clears 336/min but ~660/min arrive. West forecourt fills, spills back onto the Nerul skywalk, and reaches 5.8/m². The best fix is free: tell Nerul/Seawoods/cab arrivals that Gate 5 is empty, and send Kharghar coaches 30 min earlier. Adding lanes at Gate 5 removes 0 crush minutes because nobody walks there.
 - **The hospitality link:** 1,400 late bookers with no room nearby take cabs late to Palm Beach → Gate 3. Book the empty Kharghar/Panvel rooms and they arrive by coach at Gate 5 instead.
@@ -546,6 +548,7 @@ Calm, serious, control-room. Brass is the only accent. Red only for danger. No g
 8. Prefer small, complete, demoable slices over big half-done features. If a P1/P2 feature isn't demoable by hour 16, cut it.
 9. When unsure about intended behaviour, check `reference/prototype.html`, then ask.
 10. Do not add: cameras, CV, a general chatbot, login, payments.
+11. After every task/phase: run `tsc --noEmit` and the test suite, append a dated entry to `docs/PROGRESS.md` (what changed, what was verified, what's still open) and, for anything with a real trade-off or an alternative considered and rejected, an entry to `docs/DECISIONS.md`. Commit with a message that stands on its own.
 
 ---
 

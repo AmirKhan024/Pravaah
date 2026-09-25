@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSlice } from '@/lib/createStore';
 import { closeRoom, resetRoomVotes, roomStore, runWithRoom, sendToRoom, simulateRoom } from '@/lib/room';
 import { store } from '@/lib/console';
+import { tallyVotes } from '@/lib/roomVotes';
 import { comma } from '@/engine';
 import { Button, cx, Delta, Logo } from '@/components/ui';
 
@@ -29,8 +30,9 @@ export default function RoomPanel() {
   const people = snap?.participants.length || 0;
   const bc = snap?.broadcast;
   const left = bc ? Math.max(0, Math.ceil((bc.closesAt - now) / 1000)) : 0;
-  const votes = snap ? Object.entries(snap.votes) : [];
-  const yes = votes.filter(([, v]) => v.choice === 'yes').length;
+  // one shared definition of "who could vote" (lib/roomVotes.ts) — this total always matches the
+  // "N votes" footnote in the result card below, because both read it from the same place.
+  const tally = snap ? tallyVotes(snap) : { yes: 0, no: 0, total: 0, eligible: 0 };
   const byCohort = (id: string) => snap?.participants.filter((p) => p.cohort === id).length || 0;
 
   return (
@@ -89,10 +91,10 @@ export default function RoomPanel() {
               </div>
               <div className="mt-3 flex items-center gap-3">
                 <div className="h-3 flex-1 overflow-hidden rounded-full bg-line">
-                  <div className="h-full bg-safe transition-[width] duration-500" style={{ width: votes.length ? (yes / votes.length) * 100 + '%' : '0%' }} />
+                  <div className="h-full bg-safe transition-[width] duration-500" style={{ width: tally.total ? (tally.yes / tally.total) * 100 + '%' : '0%' }} />
                 </div>
                 <span className="num text-[14px]">
-                  <b className="text-safe">{yes}</b> yes · <b className="text-danger-soft">{votes.length - yes}</b> no
+                  <b className="text-safe">{tally.yes}</b> yes · <b className="text-danger-soft">{tally.no}</b> no
                 </span>
               </div>
             </div>
@@ -123,7 +125,7 @@ export default function RoomPanel() {
               </Button>
             ) : (
               <>
-                <Button variant="solid" size="lg" disabled={r.running || votes.length === 0} onClick={runWithRoom} className={cx(left > 0 && 'opacity-90')}>
+                <Button variant="solid" size="lg" disabled={r.running || tally.total === 0} onClick={runWithRoom} className={cx(left > 0 && 'opacity-90')}>
                   {r.running ? 'Re-running the evening…' : 'Run the evening with the room'}
                 </Button>
                 <Button variant="ghost" size="lg" onClick={resetRoomVotes}>

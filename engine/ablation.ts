@@ -3,6 +3,7 @@
  * PROVE (rejected) — simulate the plausible-but-wrong fixes and publish their result.
  * Ports of runAblation()/runConstraints() in reference/prototype.html.
  */
+import { peakPulseBurst } from './arrivals';
 import { comma } from './format';
 import { simulate } from './simulate';
 import type { Intervention, Scenario, SimOptions, SimResult } from './types';
@@ -37,13 +38,20 @@ function gateLoads(scn: Scenario) {
   return out;
 }
 
+function pulseDetail(scn: Scenario): string {
+  const b = peakPulseBurst(scn);
+  return b ? `about ${comma(b.rounded)} people every ${b.every} minutes` : 'in bursts, not a steady stream';
+}
+
 function ablationTests(scn: Scenario, waits: Record<string, number>): Test[] {
   if (scn.id === 'dyPatil') {
     return [
       { name: 'How the 84,000 are routed to gates', detail: '47,000 sent to Gate 3, 14,000 to Gate 5', opts: { waits, forceDivert: { seawoods_rail: 1.0, taxi_drop: 0.45 } }, ivs: [] },
       { name: 'Screening capacity at Gate 3', detail: '12 lanes clearing 336 people a minute', opts: { waits }, ivs: [{ type: 'lanes', gate: 'gate3', n: 8, from: 230 }] },
       { name: '1,400 late bookings with no room nearby', detail: 'they cab in late, straight to Gate 3', opts: { waits }, ivs: [{ type: 'house' }] },
-      { name: 'Trains arriving in six-minute pulses', detail: 'about 900 people at a time', opts: { waits, noPulse: true }, ivs: [] },
+      // was hardcoded "about 900 people at a time" — this scenario's real peak burst is ~2,000
+      // (see engine/arrivals.ts peakPulseBurst); read it live so it can never drift again.
+      { name: 'Trains arriving in six-minute pulses', detail: pulseDetail(scn), opts: { waits, noPulse: true }, ivs: [] },
     ];
   }
   // generic venue: the same four questions, derived from the graph
@@ -60,7 +68,7 @@ function ablationTests(scn: Scenario, waits: Record<string, number>): Test[] {
     tests.push({ name: 'Screening capacity at ' + name(busiest), detail: (scn.zones.find((z) => z.id === busiest)?.lanes || 0) + ' lanes', opts: { waits }, ivs: [{ type: 'lanes', gate: busiest, n: 8, from: scn.gatesOpenTick }] });
   if (scn.cohorts.some((c) => c.housed) && scn.lateBookings)
     tests.push({ name: comma(scn.lateBookings) + ' late bookings with no room nearby', detail: 'they arrive late, by cab', opts: { waits }, ivs: [{ type: 'house' }] });
-  if (scn.cohorts.some((c) => c.pulse)) tests.push({ name: 'Trains arriving in pulses', detail: 'bursts instead of a steady stream', opts: { waits, noPulse: true }, ivs: [] });
+  if (scn.cohorts.some((c) => c.pulse)) tests.push({ name: 'Trains arriving in pulses', detail: pulseDetail(scn), opts: { waits, noPulse: true }, ivs: [] });
   return tests;
 }
 

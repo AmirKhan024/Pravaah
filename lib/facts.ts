@@ -2,7 +2,7 @@
  * Plain-language facts about a scenario and its evenings. Every figure is computed from the
  * scenario data or a SimResult — nothing here is typed in by hand.
  */
-import { arrivalCurve, CRUSH, JAM, type Scenario, type SimResult } from '@/engine';
+import { CRUSH, JAM, peakPulseBurst, type Scenario, type SimResult } from '@/engine';
 
 export function gateLoads(scn: Scenario) {
   const out: Record<string, number> = {};
@@ -23,24 +23,10 @@ export function scenarioFacts(scn: Scenario) {
   const gates = scn.zones.filter((z) => z.type === 'gate');
   const lanes = gates.reduce((a, g) => a + (g.lanes || 0), 0);
   const rail = scn.cohorts.filter((c) => c.pulse);
-  // biggest single burst: the busiest pulse window of the biggest pulsed cohort
-  let burst = 0,
-    burstEvery = 0,
-    burstLink = '';
-  for (const c of rail) {
-    const curve = arrivalCurve(c.mean, c.std, scn.horizon, c.pulse);
-    let best = 0;
-    for (let t0 = 0; t0 < scn.horizon; t0 += c.pulse!.period) {
-      let s = 0;
-      for (let k = 0; k < c.pulse!.period && t0 + k < scn.horizon; k++) s += curve[t0 + k];
-      best = Math.max(best, s);
-    }
-    if (best * c.size > burst) {
-      burst = best * c.size;
-      burstEvery = c.pulse!.period;
-      burstLink = c.path[0];
-    }
-  }
+  // the single busiest pulse-window burst, shared with engine/ablation.ts's "trains arrive in
+  // bursts" test description so the two can't say different numbers for the same phenomenon
+  // (this replaced a second, independent copy of the same computation that had drifted apart).
+  const burst = peakPulseBurst(scn);
   const loads = gateLoads(scn);
   const gateRank = Object.keys(loads).sort((a, b) => loads[b] - loads[a]);
   return {
@@ -57,9 +43,9 @@ export function scenarioFacts(scn: Scenario) {
     throughput: lanes * scn.laneRate,
     railPeople: rail.reduce((a, c) => a + c.size, 0),
     railCohorts: rail,
-    burst: Math.round(burst / 100) * 100,
-    burstEvery,
-    burstLink: scn.links.find((l) => l.id === burstLink),
+    burst: burst?.rounded ?? 0,
+    burstEvery: burst?.every ?? 0,
+    burstLink: burst ? scn.links.find((l) => l.id === burst.firstLink) : undefined,
     loads,
     busiestGate: gates.find((g) => g.id === gateRank[0]),
     quietestGate: gates.find((g) => g.id === gateRank[gateRank.length - 1]),

@@ -66,7 +66,11 @@ export function join(r: Room, pid: string, lang: Lang, simulated = false): Parti
 }
 
 export function vote(r: Room, pid: string, choice: 'yes' | 'no') {
-  if (!r.participants.has(pid) || !r.broadcast) return false;
+  const p = r.participants.get(pid);
+  // a participant can only vote if their own cohort actually received a message this broadcast —
+  // enforced here too (not just client-side), so a stray or malicious API call can't produce a
+  // vote that inflates the tally beyond what tallyVotes()/votableParticipantIds() would count.
+  if (!p || !r.broadcast || !r.broadcast.messages[p.cohort]) return false;
   r.votes.set(pid, { choice, at: Date.now() });
   return true;
 }

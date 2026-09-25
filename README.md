@@ -2,7 +2,7 @@
 
 **A flight simulator for event organisers.** Pravaah rehearses the whole evening before it happens: hotels, trains, roads and gates in one simulation. It finds the minute the crowd will break, proves the cause, tests every fix, and tells you **how many minutes you have left to act**.
 
-> Every other system watches the crush happen. Pravaah tells you forty minutes early, proves why, and tells you how long you have left to stop it.
+> Every other system watches the crush happen. Pravaah tells you before it happens, proves why, and tells you how long you have left to stop it.
 
 HackCelestial 3.0 · Team Grid9 · PS-8 Mega-Event Hospitality Orchestration.
 

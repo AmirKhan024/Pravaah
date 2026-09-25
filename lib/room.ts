@@ -7,6 +7,7 @@ import { clockFor, comma, mulberry32, personPath, RAVI, simulate, tracePerson, t
 import { approve, log, store as consoleStore, toast } from './console';
 import { createStore } from './createStore';
 import { crowdMessage, devaDigits, nudgeVars } from './messages';
+import { tallyByCohort, tallyVotes } from './roomVotes';
 import type { RoomCohort, RoomMessage, RoomOutcome, RoomSnapshot } from './roomTypes';
 
 export interface RoomState {
@@ -133,8 +134,14 @@ export async function simulateRoom(n = 24) {
       }
       const id = 'sim-' + participants.length;
       participants.push({ id, cohort: pick.id, lang: (['mr', 'hi', 'en'] as Lang[])[i % 3], joinedAt: Date.now(), simulated: true });
-      const p = res.nudgeInfo.find((x) => x.cohort === pick.id)?.p ?? 0.3;
-      if (get().snap?.broadcast) votes[id] = { choice: rnd() < p ? 'yes' : 'no', at: Date.now() };
+      // a simulated phone can only vote where a real phone could: its cohort must actually have
+      // received a message in this broadcast. Voting for an un-nudged cohort was the bug that
+      // made the live tally (all votes) disagree with the result footnote (nudged-only votes).
+      const msg = get().snap?.broadcast?.messages[pick.id];
+      if (msg) {
+        const p = res.nudgeInfo.find((x) => x.cohort === pick.id)?.p ?? 0.3;
+        votes[id] = { choice: rnd() < p ? 'yes' : 'no', at: Date.now() };
+      }
     }
     set((st) => ({ snap: st.snap ? { ...st.snap, participants, votes } : null }));
     return;
@@ -149,7 +156,9 @@ export async function simulateRoom(n = 24) {
   if (snap?.broadcast) {
     for (const pid of ids) {
       const p = snap.participants.find((x) => x.id === pid);
-      const pr = res.nudgeInfo.find((x) => x.cohort === p?.cohort)?.p ?? 0.3;
+      // same rule as the offline branch above: only vote where the cohort actually has a message.
+      if (!p || !snap.broadcast.messages[p.cohort]) continue;
+      const pr = res.nudgeInfo.find((x) => x.cohort === p.cohort)?.p ?? 0.3;
       await post('vote', { pid, choice: rnd() < pr ? 'yes' : 'no' });
     }
   }
@@ -162,13 +171,10 @@ export async function runWithRoom() {
   const s = consoleStore.getState();
   if (!snap || !s.approved) return;
   set({ running: true });
-  const byCohort: Record<string, { yes: number; no: number }> = {};
-  for (const [pid, v] of Object.entries(snap.votes)) {
-    const p = snap.participants.find((x) => x.id === pid);
-    if (!p) continue;
-    const b = (byCohort[p.cohort] ||= { yes: 0, no: 0 });
-    v.choice === 'yes' ? b.yes++ : b.no++;
-  }
+  // tallyByCohort and tallyVotes below share one definition of "votable" (roomVotes.ts), so the
+  // per-cohort breakdown here and the room-wide total always agree with each other and with the
+  // live tally bar in RoomPanel.tsx.
+  const byCohort = tallyByCohort(snap);
   const override: Record<string, number> = {};
   const nudged = s.approved.ivs.filter((iv) => iv.type === 'nudge').map((iv) => (iv as { cohort: string }).cohort);
   const modelRes = simulate(s.scn, s.approved.ivs, { waits: s.waits, lite: true });
@@ -180,8 +186,7 @@ export async function runWithRoom() {
     if (p != null) override[id] = p;
     return { id, label: s.scn.cohorts.find((c) => c.id === id)?.label || id, yes: b.yes, no: b.no, p, modelP };
   });
-  const votes = perCohort.reduce((a, c) => a + c.yes + c.no, 0);
-  const yesAll = perCohort.reduce((a, c) => a + c.yes, 0);
+  const { total: votes, yes: yesAll } = tallyVotes(snap);
   const sizes = perCohort.map((c) => s.scn.cohorts.find((x) => x.id === c.id)?.size || 0);
   const modelYes = perCohort.reduce((a, c, i) => a + c.modelP * sizes[i], 0) / Math.max(1, sizes.reduce((a, b) => a + b, 0));
   const roomYes = votes ? yesAll / votes : 0;

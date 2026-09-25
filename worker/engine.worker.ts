@@ -66,7 +66,7 @@ const api = {
     const waits = probeWaits(scn, opts);
     const levers = candidates(scn)
       .filter((c) => expired.indexOf(c.label) < 0)
-      .map((c) => retime(c, tick));
+      .map((c) => retime(c, tick, scn));
     const pf = PROFILES['Balanced'];
     const p = optimise(scn, { w: pf.w, depth: pf.depth, waits, levers, opts, liteResult: true });
     return { chosen: p.chosen, crushMin: p.result.crushMin, rupees: p.result.rupees, missed: p.result.missed, evals: p.evals };

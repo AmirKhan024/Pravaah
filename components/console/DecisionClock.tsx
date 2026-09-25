@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useSlice } from '@/lib/createStore';
-import { clock, decisionDeadline, recommended, store } from '@/lib/console';
+import { clock, decisionDeadline, recommended, store, waitingCost } from '@/lib/console';
 import { crushIfStartedAt } from './CostOfWaiting';
 import { cx } from '@/components/ui';
 
@@ -84,7 +84,7 @@ export default function DecisionClock() {
         <span className="flex max-w-[230px] flex-col leading-tight">
           <span className="text-[12.5px] font-semibold text-danger-soft">The window closed</span>
           <span className="text-[11.5px] text-dim">
-            {s.replan ? `Waiting cost ${s.replan.lostMin} more dangerous minute${s.replan.lostMin === 1 ? '' : 's'}` : 'Re-planning from now…'}
+            {s.replan ? waitingCost(s.replan.lostMin, s.replan.lostRupees) : 'Re-planning from now…'}
           </span>
         </span>
       </button>

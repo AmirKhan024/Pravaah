@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { useSlice } from '@/lib/createStore';
-import { approve, clock, PROFILE_NAMES, runRedTeamFor, selectedPlan, store } from '@/lib/console';
+import { approve, clock, PROFILE_NAMES, runRedTeamFor, selectedPlan, store, waitingCost } from '@/lib/console';
 import { planResult } from '@/lib/planCache';
 import { candidates, comma, feasible, inr, leverWorth, PROFILES, type Lever, type ProfileName } from '@/engine';
 import { Busy, Button, cx, Delta, Pill } from '@/components/ui';
@@ -145,7 +145,7 @@ export default function Prove() {
           <div className="kicker mb-1 !text-danger-soft">Plan B · from {clock(s.replan.atTick)}</div>
           <p className="text-[13px] leading-relaxed text-dim">
             The free moves closed. This is the best plan still possible: <Delta from={s.base.crushMin} to={s.replan.crushMin} unit="dangerous min" /> for {s.replan.rupees ? inr(s.replan.rupees) : '₹0'}.{' '}
-            <b className="text-text">Waiting cost {s.replan.lostMin} more dangerous minutes.</b>
+            <b className="text-text">{waitingCost(s.replan.lostMin, s.replan.lostRupees)}</b>
           </p>
           <ul className="mt-2 flex flex-col gap-1 text-[12.5px]">
             {s.replan.chosen.map((c) => (

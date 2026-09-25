@@ -217,6 +217,14 @@ export default function Console() {
       <Drawers />
       <RoomPanel />
       <Toast />
+      <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-ink p-8 text-center min-[900px]:hidden">
+        <Logo className="size-10 text-brass" />
+        <div className="font-display text-[30px] leading-tight">The console is built for a big screen.</div>
+        <p className="max-w-[340px] text-[14px] leading-relaxed text-dim">It is the organiser&apos;s control room. On a phone, join the crowd instead: scan the room code on the big screen.</p>
+        <Link href="/" className="rounded-lg border border-brass-dim px-4 py-2 text-[14px] text-brass">
+          Back to the start
+        </Link>
+      </div>
     </div>
   );
 }

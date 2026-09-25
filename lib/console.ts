@@ -87,7 +87,7 @@ export interface ConsoleState {
   redTeamBusy: boolean;
   redTeamProgress: number;
   expired: string[];
-  replan?: { chosen: Lever[]; crushMin: number; rupees: number; missed: number; atTick: number; lostMin: number };
+  replan?: { chosen: Lever[]; crushMin: number; rupees: number; missed: number; atTick: number; lostMin: number; lostRupees: number };
   replanBusy: boolean;
   approved: Approved | null;
   whatIf: { id: WhatIfId | 'custom'; label: string; say: string; patch?: WhatIfPatch; none: SimResult; withPlan: SimResult | null; source?: string } | null;
@@ -313,20 +313,28 @@ function checkClock() {
     .then((r) => {
       const orig = recommended(get());
       const lostMin = r.crushMin - (orig ? orig.crushMin : 0);
-      set({ replan: { ...r, atTick, lostMin }, replanBusy: false, selected: 'Balanced' });
-      caption(`Waiting cost you ${lostMin} more dangerous minute${lostMin === 1 ? '' : 's'}. This is the best plan still possible from ${clock(atTick)}.`);
+      const lostRupees = Math.max(0, r.rupees - (orig ? orig.rupees : 0));
+      set({ replan: { ...r, atTick, lostMin, lostRupees }, replanBusy: false, selected: 'Balanced' });
+      caption(waitingCost(lostMin, lostRupees) + ` This is the best plan still possible from ${clock(atTick)}.`);
       log('plan_recommended', `Plan B from ${clock(atTick)}: ${r.chosen.map((c) => c.label).join('; ')}. ${r.crushMin} dangerous minutes (waiting cost ${lostMin}).`, { ...r, atTick });
     })
     .catch(() => set({ replanBusy: false }));
 }
 
 /** approve: the plan is applied from NOW — late decisions only reach people who have not left yet */
+/** what waiting cost, in plain words: dangerous minutes first, money second */
+export function waitingCost(lostMin: number, lostRupees: number) {
+  if (lostMin > 0) return `Waiting cost you ${lostMin} more dangerous minute${lostMin === 1 ? '' : 's'}${lostRupees ? ` and ₹${Math.round(lostRupees).toLocaleString('en-IN')}` : ''}.`;
+  if (lostRupees > 0) return `Waiting turned a free fix into one that costs ₹${Math.round(lostRupees).toLocaleString('en-IN')}.`;
+  return 'Waiting has not cost anything yet.';
+}
+
 export function approve(acceptOverride?: Record<string, number>, roomNote?: string) {
   const s = get();
   const plan = selectedPlan(s);
   if (!plan) return;
   const at = s.approved ? s.approved.tick : Math.floor(s.tick);
-  const ivs = plan.chosen.map((c) => retime(c, at));
+  const ivs = plan.chosen.map((c) => retime(c, at, s.scn));
   const opts: SimOptions = { waits: s.waits, ...(acceptOverride ? { acceptOverride } : {}) };
   const result = simulate(s.scn, ivs, opts);
   const approved: Approved = { name: plan.name, tick: at, ivs, result, acceptOverride, roomNote };

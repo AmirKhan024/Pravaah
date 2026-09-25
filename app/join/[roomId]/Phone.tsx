@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Lang } from '@/engine';
 import type { PhoneView } from '@/lib/roomTypes';
 import { devaDigits } from '@/lib/messages';
+import { supabaseBrowser } from '@/lib/supabase';
 import { Logo } from '@/components/ui';
 
 const T: Record<Lang, Record<string, string>> = {
@@ -127,13 +128,33 @@ export default function Phone({ roomId }: { roomId: string }) {
   useEffect(() => {
     if (!lang) return;
     call({ action: 'join', lang });
-    const i = setInterval(() => call(), 1200);
+    // Realtime, so the buzz and the outcome arrive within tens of milliseconds of the control
+    // room acting, not up to a second of polling lag; the poll stays on underneath as a safety
+    // net (slower once Realtime is confirmed connected) in case the socket silently drops.
+    const sb = supabaseBrowser();
+    let i = setInterval(() => call(), sb ? 5000 : 1200);
+    // only the room row matters here (the broadcast/outcome arriving) — a phone's own vote is
+    // already reflected immediately by the POST response, and it never needs to know about
+    // anyone else's vote, so there is no reason to subscribe to the votes table per-phone.
+    const ch = sb
+      ?.channel(`phone:${roomId}:${pid.current}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, () => call())
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          clearInterval(i);
+          i = setInterval(() => call(), 5000);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          clearInterval(i);
+          i = setInterval(() => call(), 1200);
+        }
+      });
     const c = setInterval(() => setNow(Date.now()), 250);
     return () => {
       clearInterval(i);
       clearInterval(c);
+      ch?.unsubscribe();
     };
-  }, [lang, call]);
+  }, [lang, call, roomId]);
 
   // buzz once per new message
   useEffect(() => {

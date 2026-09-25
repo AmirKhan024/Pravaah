@@ -5,6 +5,39 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-25 — Phase 2: service-role writes + anon-SELECT RLS, not per-row ownership policies
+
+**Decision:** every table has RLS enabled with no write policies at all for the anon/publishable
+key — every write (`createRoom`, `join`, `vote`, `setBroadcast`, …) goes through
+`supabaseAdmin()` (service-role key) from Next.js API routes only, never directly from the browser.
+The anon key gets a single blanket `for select using (true)` on `rooms`/`participants`/`votes`
+(needed for Realtime, which authorizes against the same RLS policies as REST), and no policy at
+all on `ledger_entries` (nobody needs to read the Black Box directly from the browser; it's always
+fetched through `/api/ledger`).
+
+**Why:** this app has no auth (SOURCE_OF_TRUTH §5.3 — "Login/auth for organisers... The Room uses
+anonymous session IDs"), so there is no `auth.uid()` to write a real per-row ownership policy
+against. The alternatives were: (a) give the anon key write access gated by looser conditions
+(e.g. "anyone can insert a vote for a participant that exists"), which is enforceable in RLS but
+easy to get subtly wrong under a deadline and impossible to test as thoroughly as a single
+TypeScript function; or (b) what was chosen — keep every write behind server code that already
+has its own logic for "who can vote" (`lib/roomVotes.ts`, Phase 1) and "does this room exist," and
+let Postgres block everything else outright. (b) also means the exact same authorization logic
+(`vote()` checking the participant's cohort has a message) runs whether Supabase is configured or
+we've fallen back to the in-memory backend — one code path, not RLS rules that would only exist
+on one of the two backends.
+
+**Trade-off accepted:** the anon key can read every room's participants and votes directly via
+REST, not just the room a given phone is in (no `room_id` scoping on the SELECT policy). This is a
+hackathon demo with anonymous ids and no personal data — a room's own participant counts and vote
+tallies were already visible to any client polling the old in-memory `/api/room/[id]` endpoint, so
+this doesn't newly expose anything; it just means the *mechanism* (direct Postgres read vs. an API
+route) changed. If this app ever needed real privacy between concurrent rooms, the SELECT policy
+would need to move to `using (room_id = current_setting('request.jwt.claims', true)::json->>'room_id')`
+or similar, which requires actual auth — out of scope here by design (§5.3).
+
+---
+
 ## 2026-09-25 — Phase 1: one shared function instead of two copy-fixes
 
 **Decision:** when the Nerul-skywalk-throughput bug turned out to be two independent implementations

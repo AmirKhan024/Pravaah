@@ -4,6 +4,79 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-25 — Phase 2: Supabase — The Room and the Black Box off the laptop
+
+**Changed**
+- `supabase/schema.sql`: `rooms`, `participants`, `votes`, `ledger_entries`, adapted to the shapes
+  already in `lib/roomTypes.ts`/`lib/ledger.ts` rather than inventing a new one — `rooms.id` IS the
+  human room code (no separate `code` column, nothing in the app ever had a room id that wasn't
+  also its code); `rooms.broadcast`/`rooms.outcome` are jsonb columns holding the current
+  `RoomBroadcast`/`RoomOutcome` directly (there's only ever one "current" one, exactly like the old
+  in-memory `Room.broadcast`) rather than a separate history table. RLS is on for every table;
+  anon gets SELECT only (needed for Realtime, and everything in these rows was already visible to
+  any client polling the old API anyway); every write goes through the service-role key from
+  server code only. Applied for real against the live project (`scripts/apply-schema.mjs`) —
+  verified via `scripts/inspect-room.mjs` that a full session's rooms/participants/votes genuinely
+  land in Postgres, not just behave correctly in the app.
+- `lib/roomServer.ts` split into a facade (`lib/roomServer.ts`) over two backends —
+  `lib/roomServer.memory.ts` (the original in-memory Map, ported to the same async signature) and
+  `lib/roomServer.supabase.ts` (new). The facade picks one via `supabaseConfigured()`
+  (`lib/supabase.ts`) per request, so Supabase being unreachable or unconfigured falls back to the
+  in-memory backend automatically, same as before this phase existed. Every function is now async
+  and takes a room id string rather than a long-lived `Room` handle, since Supabase calls are I/O
+  and nothing should go stale across an await or a different serverless instance.
+- `app/api/room/route.ts` and `app/api/room/[id]/route.ts` updated for the new async, id-based API
+  (and now return a real error body instead of silently doing nothing on failure).
+- Realtime wired for real, not just persistence: `lib/room.ts` (console) and
+  `app/join/[roomId]/Phone.tsx` (phone) both open a genuine Supabase Realtime channel
+  (`postgres_changes` on `rooms`/`participants`/`votes`, filtered by room id) and refetch on any
+  change. A slow poll (4–5s) stays on underneath as a safety net in case the socket drops; it runs
+  at the old 1–1.2s cadence automatically whenever Realtime isn't connected (not configured, or
+  `CHANNEL_ERROR`/`TIMED_OUT`).
+- `lib/ledger.ts`: the hash-chain math (`canonicalJSON`, `sha256`, `entryBody`, `appendLedger`,
+  `verifyLedger`) is byte-for-byte unchanged. Persistence moved to `app/api/ledger/route.ts` →
+  Supabase's `ledger_entries`, keyed by a per-browser `sessionId()` (localStorage) so a refresh
+  keeps the same ledger but different laptops/sessions never collide. `loadLedger()` is now async
+  (one call site changed, `boot()` in `lib/console.ts`); `appendLedger`/`clearLedger` write to
+  Supabase and localStorage together, and fall back to localStorage alone on any Supabase failure.
+- `.env.local`/`.env.example`: added `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  (browser, Realtime-only) alongside the existing server-only `SUPABASE_URL`/`SUPABASE_SECRET_KEY`.
+
+**Verified — live, against the real Supabase project**
+- `tsc --noEmit`: clean. `npx vitest run`: 43/43 (added `lib/__tests__/roomServer.fallback.test.ts`,
+  a full room lifecycle — create, join, broadcast, vote, snapshot, phoneView — run with
+  `NEXT_PUBLIC_DEMO_OFFLINE=1` to prove the in-memory fallback still works end-to-end on its own).
+  Needed a `server-only` stub alias in `vitest.config.mts` (that package throws outside Next's own
+  runtime; the real Next.js build still enforces it — the alias never ships).
+- Ran the full console → approve a plan → open the Room → real phone joins → broadcast → vote →
+  "run with the room" → personal outcome flow against `npm run dev` with the real credentials.
+  Confirmed via Playwright's WebSocket events (not just app behavior) that both the console and the
+  phone open a genuine `wss://…supabase.co/realtime/v1/websocket` connection and receive a
+  `"Subscribed to PostgreSQL"` ack for their room's `postgres_changes` filter. Message delivery to
+  the phone measured ~2.2s end-to-end in this environment (this dev machine ↔ the Supabase project,
+  which is in `ap-northeast-1`/Tokyo — cross-region latency, not a defect; on the same Wi-Fi at the
+  actual venue this should be much faster). Then queried Supabase directly
+  (`node scripts/inspect-room.mjs <code>`) and confirmed the room row, both participants (one real
+  headless-browser phone, one simulated), the cast vote, the broadcast's per-cohort messages, and
+  the computed outcome headline all genuinely persisted in Postgres — this is not just "the app
+  behaved correctly," the data is independently queryable outside the app.
+
+**Explicitly NOT verified — I could not do these from here**
+- **`vercel deploy` and two-phone-on-mobile-data testing**, as the brief's step 4 asks for. I have
+  no Vercel account/deploy access in this environment, and physical phones on mobile data aren't
+  something I can drive. Everything Supabase-related is now genuinely code-complete and verified
+  against the real project from a local dev server, including the parts (Realtime, cross-request
+  persistence) that a single-process in-memory version could never have passed — but the specific
+  "does this survive Vercel's multiple serverless instances, over a real mobile network" claim is
+  unverified by me. **Please run `vercel deploy` (env vars are already the same ones in
+  `.env.local`) and test The Room with two phones on mobile data, and let me know what happens.**
+  If it fails, the most likely culprits are: (a) `NEXT_PUBLIC_*` vars not set in the Vercel project
+  settings (they must be — server-only `SUPABASE_URL`/`SUPABASE_SECRET_KEY` being set is not
+  enough for the browser Realtime client), or (b) the anon/publishable key's RLS SELECT policies
+  needing a broader `for all` grant if some read path I didn't anticipate needs it.
+
+---
+
 ## 2026-09-25 — Phase 1: fix known-wrong numbers and copy
 
 **Changed**

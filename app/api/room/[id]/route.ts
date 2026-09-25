@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getRoom, join, phoneView, reset, setBroadcast, setOutcome, snapshot, vote } from '@/lib/roomServer';
+import { join, phoneView, reset, roomExists, setBroadcast, setOutcome, snapshot, vote } from '@/lib/roomServer';
 import type { Lang } from '@/engine';
 import type { RoomBroadcast, RoomOutcome } from '@/lib/roomTypes';
 
@@ -10,42 +10,56 @@ const lang = (l: unknown): Lang => (LANGS.includes(l as Lang) ? (l as Lang) : 'e
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const r = getRoom(id);
-  if (!r) return NextResponse.json({ ok: false, error: 'no such room' }, { status: 404 });
   const pid = new URL(req.url).searchParams.get('pid');
-  return NextResponse.json(pid ? phoneView(r, pid) : snapshot(r), { headers: { 'cache-control': 'no-store' } });
+  try {
+    if (pid) {
+      const v = await phoneView(id, pid);
+      return NextResponse.json(v, { headers: { 'cache-control': 'no-store' } });
+    }
+    const s = await snapshot(id);
+    if (!s) return NextResponse.json({ ok: false, error: 'no such room' }, { status: 404 });
+    return NextResponse.json(s, { headers: { 'cache-control': 'no-store' } });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'room lookup failed' }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const r = getRoom(id);
-  if (!r) return NextResponse.json({ ok: false, error: 'no such room' }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  switch (b.action) {
-    case 'join': {
-      if (typeof b.pid !== 'string' || b.pid.length > 64) return NextResponse.json({ ok: false }, { status: 400 });
-      join(r, b.pid, lang(b.lang), !!b.simulated);
-      return NextResponse.json(phoneView(r, b.pid));
+  try {
+    switch (b.action) {
+      case 'join': {
+        if (typeof b.pid !== 'string' || b.pid.length > 64) return NextResponse.json({ ok: false }, { status: 400 });
+        const p = await join(id, b.pid, lang(b.lang), !!b.simulated);
+        if (!p) return NextResponse.json({ ok: false, error: 'no such room' }, { status: 404 });
+        return NextResponse.json(await phoneView(id, b.pid));
+      }
+      case 'vote': {
+        if (typeof b.pid !== 'string') return NextResponse.json({ ok: false }, { status: 400 });
+        const ok = await vote(id, b.pid, b.choice === 'yes' ? 'yes' : 'no');
+        return NextResponse.json({ ...(await phoneView(id, b.pid)), ok });
+      }
+      case 'broadcast': {
+        const bc = b.broadcast as Omit<RoomBroadcast, 'sentAt'>;
+        if (!bc || !bc.messages) return NextResponse.json({ ok: false }, { status: 400 });
+        if (!(await roomExists(id))) return NextResponse.json({ ok: false, error: 'no such room' }, { status: 404 });
+        await setBroadcast(id, bc);
+        return NextResponse.json(await snapshot(id));
+      }
+      case 'outcome': {
+        if (!(await roomExists(id))) return NextResponse.json({ ok: false, error: 'no such room' }, { status: 404 });
+        await setOutcome(id, b.outcome as RoomOutcome);
+        return NextResponse.json(await snapshot(id));
+      }
+      case 'reset': {
+        if (!(await roomExists(id))) return NextResponse.json({ ok: false, error: 'no such room' }, { status: 404 });
+        await reset(id);
+        return NextResponse.json(await snapshot(id));
+      }
     }
-    case 'vote': {
-      if (typeof b.pid !== 'string') return NextResponse.json({ ok: false }, { status: 400 });
-      const ok = vote(r, b.pid, b.choice === 'yes' ? 'yes' : 'no');
-      return NextResponse.json({ ...phoneView(r, b.pid), ok });
-    }
-    case 'broadcast': {
-      const bc = b.broadcast as Omit<RoomBroadcast, 'sentAt'>;
-      if (!bc || !bc.messages) return NextResponse.json({ ok: false }, { status: 400 });
-      setBroadcast(r, bc);
-      return NextResponse.json(snapshot(r));
-    }
-    case 'outcome': {
-      setOutcome(r, b.outcome as RoomOutcome);
-      return NextResponse.json(snapshot(r));
-    }
-    case 'reset': {
-      reset(r);
-      return NextResponse.json(snapshot(r));
-    }
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'room action failed' }, { status: 500 });
   }
   return NextResponse.json({ ok: false, error: 'unknown action' }, { status: 400 });
 }

@@ -3,11 +3,13 @@
  * The Room, console side (SOURCE_OF_TRUTH §8.1). The live acceptance rate from real phones
  * overrides the nudge model's p for that cohort, and the evening re-runs with their choices.
  */
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { clockFor, comma, mulberry32, personPath, RAVI, simulate, tracePerson, type Lang, type Scenario, type SimResult } from '@/engine';
 import { approve, log, store as consoleStore, toast } from './console';
 import { createStore } from './createStore';
 import { crowdMessage, devaDigits, nudgeVars } from './messages';
 import { tallyByCohort, tallyVotes } from './roomVotes';
+import { supabaseBrowser } from './supabase';
 import type { RoomCohort, RoomMessage, RoomOutcome, RoomSnapshot } from './roomTypes';
 
 export interface RoomState {
@@ -36,6 +38,8 @@ export function roomCohorts(scn: Scenario): RoomCohort[] {
 }
 
 let poll: ReturnType<typeof setInterval> | undefined;
+let channel: RealtimeChannel | null = null;
+
 async function refresh() {
   const id = get().id;
   if (!id || get().offline) return;
@@ -47,6 +51,32 @@ async function refresh() {
   }
 }
 
+/**
+ * Live updates via Supabase Realtime (Postgres Changes on rooms/participants/votes for this room),
+ * so a phone joining or voting reaches the console within tens of milliseconds, not up to a second
+ * of polling delay. `refresh()` re-fetches the whole snapshot on any change rather than trying to
+ * apply the raw change payload — simpler, and cheap enough at this scale (a few hundred rows).
+ * The 1s poll stays on as a safety net in case a Realtime connection silently drops; it just runs
+ * less often once Realtime is confirmed connected.
+ */
+function subscribeRealtime(roomId: string) {
+  const sb = supabaseBrowser();
+  channel?.unsubscribe();
+  channel = null;
+  clearInterval(poll);
+  poll = setInterval(refresh, sb ? 4000 : 1000);
+  if (!sb) return;
+  channel = sb
+    .channel(`room:${roomId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, refresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'participants', filter: `room_id=eq.${roomId}` }, refresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `room_id=eq.${roomId}` }, refresh)
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') poll = (clearInterval(poll), setInterval(refresh, 4000));
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') poll = (clearInterval(poll), setInterval(refresh, 1000));
+    });
+}
+
 export async function openRoom() {
   if (get().id) {
     set({ open: true });
@@ -55,15 +85,15 @@ export async function openRoom() {
   const scn = consoleStore.getState().scn;
   const cohorts = roomCohorts(scn);
   try {
-    const r = await fetch('/api/room', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cohorts }) }).then((x) => x.json());
+    const r = await fetch('/api/room', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cohorts, scenarioId: scn.id || 'unknown' }) }).then((x) => x.json());
+    if (!r.id) throw new Error(r.error || 'createRoom failed');
     let origin = window.location.origin;
     if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)) {
       const net = await fetch('/api/net').then((x) => x.json()).catch(() => ({ ips: [] }));
       if (net.ips?.[0]) origin = `${window.location.protocol}//${net.ips[0]}:${window.location.port || '3000'}`;
     }
     set({ id: r.id, url: `${origin}/join/${r.id}`, open: true, offline: false });
-    clearInterval(poll);
-    poll = setInterval(refresh, 1000);
+    subscribeRealtime(r.id);
     refresh();
   } catch {
     // no server: the room still works as a simulation on this machine

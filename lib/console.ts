@@ -171,7 +171,7 @@ let booted = false;
 export function boot() {
   if (booted) return;
   booted = true;
-  set({ ledger: loadLedger() });
+  loadLedger().then((ledger) => set({ ledger }));
   const s = get();
   const watch = s.scn.zones.findIndex((z) => z.id === 'fc_west');
   engine()

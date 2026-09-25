@@ -38,7 +38,7 @@ import { engine, proxy } from './engineClient';
 import { appendLedger, loadLedger, type LedgerEntry, type LedgerType } from './ledger';
 
 export type Mode = 'intro' | 'story' | 'live' | 'replay' | 'free';
-export type Drawer = null | 'about' | 'ledger' | 'report' | 'board' | 'chain' | 'redteam' | 'orders';
+export type Drawer = null | 'about' | 'ledger' | 'report' | 'board' | 'chain' | 'redteam' | 'orders' | 'deck';
 
 export interface PlanSummary {
   chosen: Lever[];

@@ -1,9 +1,10 @@
 'use client';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useSlice } from '@/lib/createStore';
 import { clock, store } from '@/lib/console';
+import { planResult } from '@/lib/planCache';
 import { verifyLedger, type LedgerEntry } from '@/lib/ledger';
-import { BOARD_CHECKS, comma, inr, type RedTeamNight } from '@/engine';
+import { BOARD_CHECKS, candidates, comma, feasible, inr, type Lever, type RedTeamNight } from '@/engine';
 import { Button, cx, Delta, Kicker, Pill, Row } from '@/components/ui';
 
 function Shell({ title, sub, children, wide }: { title: ReactNode; sub?: ReactNode; children: ReactNode; wide?: boolean }) {
@@ -371,6 +372,58 @@ function AboutDrawer() {
   );
 }
 
+/*
+ * Phase 4: "build your own plan" moved here from the Prove step's main flow — it's genuinely
+ * useful but was cluttering the default demo path (brief: "should not appear in the default demo
+ * path at all"). Reachable only via the small "Advanced" link on the Plan tab.
+ */
+function DeckDrawer() {
+  const s = useSlice(store, (s) => ({ scn: s.scn, waits: s.waits, base: s.base, user: s.userPlan }));
+  const C = useMemo(() => candidates(s.scn), [s.scn]);
+  const r = planResult(s.scn, s.user, s.waits);
+  const toggle = (c: Lever) => {
+    const on = s.user.indexOf(c) >= 0;
+    const next = on ? s.user.filter((x) => x !== c) : [...s.user, c];
+    if (!on && !feasible(next)) return;
+    store.setState({ userPlan: next, selected: 'Your plan' });
+  };
+  const peak = (x: number[]) => Math.max(...x).toFixed(1);
+  return (
+    <Shell title="Build your own plan" sub="Tick any combination of moves. The projection below updates live, the same engine as every other plan.">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-xl border border-line bg-ink/60 p-3">
+        <div className="col-span-2 kicker !mb-1">What will happen · updates as you choose</div>
+        <span className="text-[12px] text-dim">Dangerous minutes</span>
+        <Delta from={s.base.crushMin} to={r.crushMin} />
+        <span className="text-[12px] text-dim">Most crowded spot</span>
+        <Delta from={peak(s.base.peakDen)} to={peak(r.peakDen)} unit="/m²" />
+        <span className="text-[12px] text-dim">Longest gate wait</span>
+        <Delta from={Math.round(s.base.maxGateWait)} to={Math.round(r.maxGateWait)} unit="min" />
+        <span className="text-[12px] text-dim">Outside at showtime</span>
+        <Delta from={comma(s.base.missed)} to={comma(r.missed)} />
+        <span className="text-[12px] text-dim">Cost to you</span>
+        <span className="num text-[14px] font-semibold text-brass">{r.rupees ? inr(r.rupees) : '₹0'}</span>
+      </div>
+      <div className="mt-4 flex flex-col gap-1">
+        {C.map((c) => {
+          const on = s.user.indexOf(c) >= 0;
+          const ok = on || feasible([...s.user, c]);
+          return (
+            <label key={c.label} className={cx('flex cursor-pointer items-start gap-2.5 rounded-lg px-2 py-1.5 text-[12.5px] leading-snug hover:bg-panel-2', !ok && 'opacity-35')}>
+              <input type="checkbox" checked={on} disabled={!ok} onChange={() => toggle(c)} className="mt-0.5 accent-[#C9A961]" />
+              <span>{c.label}</span>
+            </label>
+          );
+        })}
+      </div>
+      {s.user.length ? (
+        <Button variant="solid" className="mt-5 w-full" onClick={() => store.setState({ drawer: null })}>
+          Done — &ldquo;Your plan&rdquo; is selected on the Plan tab
+        </Button>
+      ) : null}
+    </Shell>
+  );
+}
+
 export default function Drawers() {
   const d = useSlice(store, (s) => s.drawer);
   if (d === 'redteam') return <RedTeamDrawer />;
@@ -378,5 +431,6 @@ export default function Drawers() {
   if (d === 'ledger') return <LedgerDrawer />;
   if (d === 'report') return <ReportDrawer />;
   if (d === 'about') return <AboutDrawer />;
+  if (d === 'deck') return <DeckDrawer />;
   return null;
 }

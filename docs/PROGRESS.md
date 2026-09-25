@@ -4,6 +4,54 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-25 — Phase 4: de-verbose the Prove step into tabs
+
+**Changed**
+- `components/console/steps/Prove.tsx` restructured into four tabs — **Plan** (default; the three
+  plan cards, Plan B banner when the clock has expired), **Why it works** (the rejected "fixes
+  that look right, but fail" list), **Timing** (decision window board + the cost-of-waiting
+  chart), **Stress test** (the Red Team summary card, drawer unchanged). The "Approve … and send
+  the orders" button is sticky at the bottom of the panel regardless of which tab is active, as
+  required.
+- **"Build your own plan" moved out of the main flow entirely**, into a new drawer
+  (`DeckDrawer` in `components/console/Drawers.tsx`, `drawer: 'deck'`), reachable only via a small
+  "Advanced: build your own plan →" link at the bottom of the Plan tab. It no longer appears in
+  the default demo path at all — confirmed live (a fresh run through steps 1→4 never shows it
+  unless that link is clicked).
+- No data/logic changes: `PlanCard`, `Board`, the Red Team summary, and `CostOfWaiting` are the
+  same components/hooks as before, just relocated into tab bodies. The deck's live projection
+  logic (`planResult`, `feasible`, lever toggling) is verbatim, moved into `DeckDrawer`.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 45/45 (unchanged — this phase touches no engine or
+  store logic, only component layout).
+- Live-verified all four tabs render their expected content, the Approve button stays visible on
+  every tab (checked specifically on the Timing tab, the one most likely to push it off-screen),
+  the Advanced link opens the deck drawer with working checkboxes and a live projection, and the
+  main Plan/Why/Timing/Stress views are dramatically shorter — every tab now fits without
+  scrolling on a 900px-tall viewport, versus the old single-scroll layout which ran to roughly
+  2.5–3 screens.
+
+**Flagged, not fixed (brief step 5 — audit only, no unilateral redesign)**
+Counted numbers visible at once, without scrolling, on a fresh Guide-step screenshot (approved
+plan, no drawer open): the "What changes" box alone shows **13 numbers** (4 before→after metric
+pairs = 8, a cost figure, and a 4-number Ravi sentence); the always-present right-rail readout
+panel adds **8 more** (4 stat tiles × current-value + "if you did nothing"); the first crowd
+message card's subtitle adds **3 more** before any scrolling. That's **~24 numbers on screen
+simultaneously** on the single most number-dense screen in the app, before even reaching the
+staff/transport/accommodation cards further down. The Explain step is comparatively fine: 4
+ablation-row numbers plus the same 8-number right rail ≈ 12 at once, and the causal-chain
+section's extra ~8–10 numbers only appear after scrolling, not all at once.
+**Recommendation, for you to decide, not decided here:** the Guide step is the stronger candidate
+for a tabbed or drawer-based split — for example "What changes" (the delta box) as its own
+default view, with the crowd-message and staff/transport/accommodation cards moved into an
+"Orders" tab, similar to what this phase just did for Prove. Explain is lower priority; if
+anything, only the causal-chain section (currently below the ablation list, adding the extra ~10
+numbers) is worth moving behind a "show how it builds" toggle. Not implemented — awaiting your
+call.
+
+---
+
 ## 2026-09-25 — Phase 3: Telegram ops channel (one-way send)
 
 **Changed**

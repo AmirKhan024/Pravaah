@@ -72,6 +72,25 @@ const api = {
     return { chosen: p.chosen, crushMin: p.result.crushMin, rupees: p.result.rupees, missed: p.result.missed, evals: p.evals };
   },
 
+  /** a venue's do-nothing evening plus the free and balanced plans (venues page) */
+  async venuePlans(scn: Scenario) {
+    const waits = probeWaits(scn);
+    const t0 = performance.now();
+    const out: Record<string, { chosen: Lever[]; crushMin: number; rupees: number; missed: number; maxGateWait: number }> = {};
+    let evals = 0;
+    for (const name of ['Zero rupees', 'Balanced'] as const) {
+      const pf = PROFILES[name];
+      const p = optimise(scn, { w: pf.w, depth: pf.depth, filter: pf.filter, waits, liteResult: true });
+      evals += p.evals;
+      out[name] = { chosen: p.chosen, crushMin: p.result.crushMin, rupees: p.result.rupees, missed: p.result.missed, maxGateWait: p.result.maxGateWait };
+    }
+    return { plans: out, evals, ms: Math.round(performance.now() - t0) };
+  },
+
+  async ensemble(scn: Scenario, zone: number) {
+    return runEnsemble(scn, 60, zone);
+  },
+
   async custom(scn: Scenario, w: Weights, depth: number) {
     const waits = probeWaits(scn);
     const t0 = performance.now();

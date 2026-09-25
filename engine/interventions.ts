@@ -40,6 +40,7 @@ const gateOfPath = (scn: Scenario, pth: string[]) => {
   return l ? l.gate : undefined;
 };
 const zoneName = (scn: Scenario, id?: string) => scn.zones.find((z) => z.id === id)?.name || id || '';
+const lc = (s: string) => (/^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
 
 /** Levers derived from any venue graph: lanes at each gate, reroute messages, earlier coaches, rooms. */
 export function autoCandidates(scn: Scenario): Lever[] {
@@ -54,10 +55,10 @@ export function autoCandidates(scn: Scenario): Lever[] {
   for (const c of scn.cohorts) {
     if (c.alt) {
       const to = zoneName(scn, gateOfPath(scn, c.alt));
-      C.push({ type: 'nudge', cohort: c.id, ask: 'reroute', rupees: 0, label: `Tell ${c.label} that ${to} is quieter` });
-      C.push({ type: 'nudge', cohort: c.id, ask: 'reroute', rupees: 100, label: `Offer ₹100 to ${c.label} to use ${to}` });
+      C.push({ type: 'nudge', cohort: c.id, ask: 'reroute', rupees: 0, label: `Tell ${lc(c.label)} that ${to} is quieter` });
+      C.push({ type: 'nudge', cohort: c.id, ask: 'reroute', rupees: 100, label: `Offer ₹100 to ${lc(c.label)} to use ${to}` });
     }
-    if (!c.pulse && !c.housed) C.push({ type: 'stagger', cohort: c.id, delta: -30, label: `Bring ${c.label} in 30 minutes earlier` });
+    if (!c.pulse && !c.housed) C.push({ type: 'stagger', cohort: c.id, delta: -30, label: `Bring ${lc(c.label)} in 30 minutes earlier` });
   }
   if (scn.cohorts.some((c) => c.housed) && scn.lateBookings > 0)
     C.push({ type: 'house', label: `Block-book empty far rooms for the ${comma(scn.lateBookings)} late bookings` });

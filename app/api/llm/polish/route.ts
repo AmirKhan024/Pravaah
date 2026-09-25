@@ -4,7 +4,8 @@ import { groqJSON, llmEnabled } from '@/lib/groq';
 export const dynamic = 'force-dynamic';
 
 const NAMES: Record<string, string> = { mr: 'Marathi', hi: 'Hindi', en: 'English' };
-const DIGITS = /[0-9०-९₹]+(?:[,.][0-9०-९]+)*/g;
+// a number together with its unit is one locked token, so the model cannot drop or change either
+const DIGITS = /₹?[0-9०-९]+(?:[,.][0-9०-९]+)*(?:\s*(?:more\s+|extra\s+|जास्त\s+|ज़्यादा\s+)?(?:minutes?|mins?|मिनिटं|मिनिटे|मिनिट|मिनट|people|लोक|लोग))?/g;
 
 /*
  * Re-word a crowd message for a PA announcement or SMS. Every number is swapped for a
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
     return `[[${nums.length - 1}]]`;
   });
   const raw = (await groqJSON(
-    `You rewrite short crowd-guidance messages for a stadium public-address system in ${NAMES[lang!]}. Keep it calm, warm, plain and short (max 2 sentences). Keep every placeholder like [[0]] exactly once and unchanged. Never write any digit or number word. Never add facts. Return JSON {"text": "..."} in ${NAMES[lang!]}.`,
+    `You rewrite short crowd-guidance messages for a stadium public-address system in ${NAMES[lang!]}. Keep it calm, warm, plain and short (max 2 sentences). Each placeholder like [[0]] stands for a number with its unit (for example "eight minutes"); keep every placeholder exactly once, unchanged, and in a sentence where its meaning stays clear. Never write any digit or number word. Never add facts. Return JSON {"text": "..."} in ${NAMES[lang!]}.`,
     masked,
   )) as { text?: string } | null;
   const out = raw?.text;

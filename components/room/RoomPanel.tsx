@@ -34,7 +34,7 @@ export default function RoomPanel() {
   const byCohort = (id: string) => snap?.participants.filter((p) => p.cohort === id).length || 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-ink/97 backdrop-blur-sm fadein" role="dialog" aria-label="The Room">
+    <div className="fixed inset-0 z-50 flex overflow-y-auto bg-ink/97 py-8 backdrop-blur-sm fadein" role="dialog" aria-label="The Room">
       <button onClick={closeRoom} className="absolute right-6 top-5 rounded-lg px-3 py-1.5 text-[13px] text-dim hover:bg-panel-2 hover:text-text">
         Close ✕
       </button>
@@ -60,7 +60,7 @@ export default function RoomPanel() {
               <Logo className="size-6" />
               <span className="kicker !text-brass">The Room</span>
             </div>
-            <h2 className="mt-2 font-display text-[54px] leading-[1.02]">You are in the crowd tonight.</h2>
+            <h2 className="mt-2 font-display text-[48px] leading-[1.02]">You are in the crowd tonight.</h2>
             <p className="mt-3 max-w-[520px] text-[16px] leading-relaxed text-dim">
               Scan the code. Your phone becomes one of the {comma(snap?.cohorts.reduce((a, x) => a + x.size, 0) || 0)} people on their way in. When the control room acts, you get the message. Your choice changes the simulation.
             </p>

@@ -14,13 +14,14 @@ export function crushIfStartedAt(scn: Scenario, plan: Lever[], waits: Record<str
 }
 
 export default function CostOfWaiting() {
-  const s = useSlice(store, (s) => ({ scn: s.scn, waits: s.waits, base: s.base.crushMin, t: Math.floor(s.tick), plan: selectedPlan(s), approved: s.approved }));
+  const s0 = useSlice(store, (s) => ({ scn: s.scn, waits: s.waits, base: s.base.crushMin, t: Math.floor(s.tick), chosen: selectedPlan(s)?.chosen, approved: s.approved }));
+  const s = { ...s0, plan: s0.chosen ? { chosen: s0.chosen } : null };
   const pts = useMemo(() => {
     if (!s.plan || !s.plan.chosen.length) return [];
     const out: { t: number; c: number }[] = [];
     for (let t = s.scn.gatesOpenTick; t <= s.scn.showStartTick; t += 10) out.push({ t, c: crushIfStartedAt(s.scn, s.plan.chosen, s.waits, t) });
     return out;
-  }, [s.plan, s.scn, s.waits]);
+  }, [s0.chosen, s.scn, s.waits]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!pts.length || s.approved) return null;
   const now = Math.max(s.scn.gatesOpenTick, s.t);
   const nowC = crushIfStartedAt(s.scn, s.plan!.chosen, s.waits, now);

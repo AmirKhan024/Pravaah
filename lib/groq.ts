@@ -6,7 +6,7 @@ import 'server-only';
  */
 export const llmEnabled = () => !!process.env.GROQ_API_KEY && process.env.NEXT_PUBLIC_DEMO_OFFLINE !== '1';
 
-export async function groqJSON(system: string, user: string, timeoutMs = 6000): Promise<unknown | null> {
+export async function groqJSON(system: string, user: string, timeoutMs = 9000): Promise<unknown | null> {
   if (!llmEnabled()) return null;
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeoutMs);
@@ -16,8 +16,9 @@ export async function groqJSON(system: string, user: string, timeoutMs = 6000): 
       signal: ctl.signal,
       headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.GROQ_API_KEY}` },
       body: JSON.stringify({
-        model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+        model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
         temperature: 0,
+        reasoning_effort: 'low',
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: system },

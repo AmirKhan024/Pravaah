@@ -76,6 +76,45 @@ function CrowdCard({ card }: { card: OrderCard }) {
   );
 }
 
+/**
+ * Staff/transport/accommodation orders only, per the brief — never the crowd message card, which
+ * keeps its own Copy/PA/SMS buttons untouched.
+ */
+function TelegramButton({ kind, title, text }: { kind: string; title: string; text: string }) {
+  const [state, setState] = useState<{ s: 'idle' | 'sending' | 'sent' | 'error'; detail?: string }>({ s: 'idle' });
+  const send = async () => {
+    setState({ s: 'sending' });
+    try {
+      const r = await fetch('/api/telegram/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, title, text }) }).then((x) => x.json());
+      if (r.ok) {
+        const d = new Date(r.sentAt);
+        const at = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); // 24h, matching the app's clock everywhere else
+        setState({ s: 'sent', detail: at });
+        log('orders_sent', `Sent "${title}" to the ops Telegram channel.`, { kind, chars: text.length });
+      } else setState({ s: 'error', detail: r.reason || 'Telegram send failed' });
+    } catch {
+      setState({ s: 'error', detail: 'Could not reach the server' });
+    }
+  };
+  if (state.s === 'sent')
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-md bg-safe/10 px-2.5 py-1.5 text-[12.5px] text-safe">
+        <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden>
+          <path d="M3 8.5l3.2 3L13 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Sent to ops · {state.detail}
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Button size="sm" variant="quiet" disabled={state.s === 'sending'} onClick={send}>
+        {state.s === 'sending' ? 'Sending…' : 'Send to Telegram'}
+      </Button>
+      {state.s === 'error' ? <span className="text-[11.5px] text-danger-soft">{state.detail}</span> : null}
+    </span>
+  );
+}
+
 function SmsButton({ text }: { text: string }) {
   const send = async () => {
     const to = window.prompt('Send this as an SMS to (a volunteer’s number, e.g. +91…):');
@@ -166,11 +205,12 @@ export default function Guide() {
               <div className="kicker mb-1">{KIND[c.kind]}</div>
               <div className="text-[14px] font-semibold leading-snug">{c.title}</div>
               <div className="mt-1.5 text-[13px] leading-relaxed text-dim">{c.body}</div>
-              <div className="mt-3 flex gap-1.5">
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 <Button size="sm" onClick={() => copy(c.body || '')}>
                   Copy
                 </Button>
                 <SmsButton text={c.body || ''} />
+                <TelegramButton kind={KIND[c.kind]} title={c.title} text={c.body || ''} />
               </div>
             </div>
           ),

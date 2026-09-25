@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pravaah — design & build review</title>
+<style>
+  :root{
+    --ink:#101715; --panel:#16201E; --panel-2:#1B2624; --line:#26322F;
+    --text:#DCE5E1; --dim:#7A8A85; --dimmer:#586662;
+    --brass:#C9A961; --brass-dim:#8E7742;
+    --safe:#6FB39A; --danger:#E0634F;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ink); color:var(--text); font-family:var(--sans);
+    font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:980px; margin:0 auto; padding:48px 24px 120px}
+  .kicker{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--brass-dim); font-weight:700}
+  h1{font-family:var(--serif); font-size:44px; line-height:1.08; margin:14px 0 6px; letter-spacing:-.01em}
+  h2{font-family:var(--serif); font-size:30px; margin:0 0 6px; letter-spacing:-.01em}
+  h3{font-size:16px; margin:0 0 4px}
+  p{color:var(--dim)}
+  .lede{font-size:17px; line-height:1.6; color:var(--text); max-width:760px}
+  a{color:var(--brass)}
+  .num{font-family:var(--mono); font-variant-numeric:tabular-nums}
+  .pill{display:inline-block; padding:3px 9px; border:1px solid var(--line); border-radius:99px; font-size:11px; color:var(--dim); margin:2px 6px 2px 0}
+  .pill.brass{border-color:var(--brass-dim); color:var(--brass)}
+  .banner{
+    border:1px solid var(--brass-dim); background:#1d1c14; border-radius:12px;
+    padding:20px 22px; margin:28px 0;
+  }
+  .banner h2{color:var(--brass); font-size:20px; font-family:var(--sans); font-weight:700}
+  .banner ol{margin:10px 0 0; padding-left:20px; color:var(--text)}
+  .banner li{margin:6px 0}
+  section{margin-top:64px; padding-top:28px; border-top:1px solid var(--line)}
+  .section-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:4px}
+  .section-head .n{font-family:var(--mono); color:var(--brass-dim); font-size:13px}
+  .section-intro{max-width:760px; margin:10px 0 26px}
+  figure{margin:0 0 40px; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden}
+  figure img{display:block; width:100%; height:auto; background:#0b1110; border-bottom:1px solid var(--line)}
+  figcaption{padding:16px 20px}
+  figcaption .label{font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--dimmer); margin-bottom:6px}
+  figcaption .cap{color:var(--text); font-size:14px; line-height:1.55}
+  figcaption .check{margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); font-size:12.5px; color:var(--dim)}
+  figcaption .check b{color:var(--brass)}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:20px}
+  @media (max-width:760px){ .grid2{grid-template-columns:1fr} h1{font-size:32px} }
+  .qlist{background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:20px 22px}
+  .qlist ol{margin:0; padding-left:20px}
+  .qlist li{margin:10px 0; color:var(--text)}
+  .footer-note{margin-top:60px; padding-top:24px; border-top:1px solid var(--line); font-size:12.5px; color:var(--dimmer)}
+  table{width:100%; border-collapse:collapse; font-size:13px; margin:14px 0}
+  td,th{border-bottom:1px solid var(--line); padding:7px 10px; text-align:left; color:var(--dim)}
+  th{color:var(--dimmer); font-weight:600; text-transform:uppercase; font-size:10.5px; letter-spacing:.06em}
+  td:first-child, th:first-child{color:var(--text)}
+  code{font-family:var(--mono); background:var(--panel-2); padding:1px 5px; border-radius:4px; font-size:12.5px; color:var(--brass)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Build review · for an AI judge</div>
+  <h1>Pravaah, as it actually runs</h1>
+  <p class="lede">
+    This document is a walkthrough of the working app, not the pitch. Every screenshot below was taken with Playwright
+    against <code>npm run dev</code> on this machine, in this order, with no staged data — the numbers you see
+    (crush minutes, prices, vote counts, hash prefixes) are whatever the engine and the room actually produced during
+    the capture run. Nothing was edited into the screenshots afterward.
+  </p>
+
+  <div class="banner">
+    <h2>What we want from you</h2>
+    <p style="color:var(--text)">
+      You are acting as an external judge for a 24-hour hackathon submission (HackCelestial 3.0, PS-8: Mega-Event
+      Hospitality Orchestration — intelligent capacity and crowd management across accommodation, transport and
+      visitor movement). About 320 teams entered, roughly 120 on this same problem statement. Read the screenshots
+      below in order — they walk through the actual product exactly as a user would encounter it — then answer:
+    </p>
+    <ol>
+      <li><b>Does the UI read as a finished, premium product</b>, or does it look like a hackathon prototype? Be specific about which screens undersell the work and why (spacing, hierarchy, contrast, motion, copy density — whatever you actually notice).</li>
+      <li><b>Is the uniqueness claim earned?</b> The pitch is "every other team watches the crush happen; this tells you 40 minutes early, proves why, and tells you how long you have left to stop it." Judging only from what's on screen, does the evidence support that claim, or does it feel asserted rather than shown?</li>
+      <li><b>Rank the five most valuable changes</b> we could make in the time remaining, ordered by (impact on a judge's first impression) × (plausible effort). Assume the engine and data pipeline are done and correct — focus on what a judge sees and feels in a 5-minute demo.</li>
+      <li><b>Name anything that looks broken, inconsistent, or like a placeholder</b> — a number that doesn't add up, a label that's unclear, a screen that looks unfinished next to its neighbors, inconsistent terminology, etc.</li>
+      <li><b>One thing to cut.</b> If we had to remove a feature or screen to spend that time polishing everything else, what would you remove and why?</li>
+    </ol>
+  </div>
+
+  <div class="grid2" style="margin:32px 0">
+    <div class="qlist">
+      <div class="kicker" style="margin-bottom:8px">What Pravaah is, in one paragraph</div>
+      <p style="color:var(--text); font-size:13.5px; margin:0">
+        A deterministic crowd-flow simulator for event organisers. It rehearses a full evening minute-by-minute
+        (hotels, trains, roads, gates in one model), predicts where and when a crowd crush happens via a 60-run
+        ensemble, explains the cause by removing factors and re-running, proves a fix by simulating every candidate
+        plan (including the ones that fail), and hands the approved plan to real people: crowd messages in three
+        languages, a live "Room" where phones vote and the simulation re-runs with real acceptance rates, a
+        stress-test against 192 bad nights, and a tamper-evident log of every decision. No LLM ever produces a
+        number — an engine (<code>simulate()</code>, ported faithfully from a working prototype with a golden test)
+        produces every figure on screen; an LLM only rewords text and parses typed what-if questions.
+      </p>
+    </div>
+    <div class="qlist">
+      <div class="kicker" style="margin-bottom:8px">Known limitations (we already know these)</div>
+      <p style="color:var(--text); font-size:13.5px; margin:0">
+        Models arrival only, not egress (leaving the venue). Hotel/lane/lane-rate numbers for DY Patil are plausible
+        estimates, not surveyed. Nudge-acceptance parameters are hand-calibrated (The Room is a live check on them).
+        The Room's server state is in-memory on the demo laptop, not persisted. The Bengaluru replay deliberately
+        omits gate-lane plans because the engine doesn't cap entry at venue capacity. SMS delivery needs Twilio keys
+        we don't have. Tell us if you find more.
+      </p>
+    </div>
+  </div>
+
+  <!-- ============ SECTION 1: COVER ============ -->
+  <section>
+    <div class="section-head"><span class="n">01</span><h2>Cover page — first five seconds</h2></div>
+    <p class="section-intro">
+      This is what a judge sees before clicking anything. The right-hand panel is not a static illustration — it's
+      the actual engine running live in the browser, showing the real do-nothing evening at DY Patil Stadium
+      (people flowing from Nerul/Seawoods/Palm Beach toward Gates 1/3/5), with a live-measured
+      <code>simulate()</code> timing badge. <code>/replay</code> and <code>/venues</code> are reachable from the
+      header nav.
+    </p>
+
+    <figure>
+      <img src="review-assets/00-cover-hero.png" alt="Pravaah cover page hero section, dark UI, headline 'A flight simulator for the evening before it happens', with a live animated flow diagram on the right showing gates 1, 3, 5 and a measured 3.2ms simulation time.">
+      <figcaption>
+        <div class="label">Cover — hero</div>
+        <div class="cap">
+          Headline: "A flight simulator for the evening before it happens." Sub-copy leads with the Bengaluru 2025
+          crush before any brand talk. Right panel: live flow diagram (Vashi hotels / Sector 20 parking → Gate 1;
+          Nerul / Seawoods / Palm Beach cabs → Gate 3; Belapur/Kharghar/Panvel → Gate 5), each gate showing live
+          people/m², with a caption reading "18:31 · DY Patil Stadium, if nobody acts · 84,000 people, 540 minutes,
+          simulated in <b style="color:var(--brass)">3.2 ms</b> on this device." Two CTAs: "Rehearse tonight at DY Patil" and "Replay 4 June, respectfully."
+          Trust row: No cameras · No sensors · No AI inventing numbers · Works offline.
+        </div>
+        <div class="check">Check: does the flow diagram read clearly at a glance, or does it need a legend? Is "3.2 ms" too small a detail to land as impressive, or does it work as a quiet flex?</div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="review-assets/01-cover-steps.png" alt="Pravaah cover page, second section, showing the five-step pitch (Rehearse, Predict, Explain, Prove, Guide) as a five-column grid, and a headline about every other system watching the crush happen.">
+      <figcaption>
+        <div class="label">Cover — five steps + positioning line</div>
+        <div class="cap">
+          Large serif pull-quote: "Every other system watches the crush happen. Pravaah tells you forty minutes
+          early, proves why, and tells you how long you have left to stop it." Below it, a five-column strip:
+          01 Rehearse, 02 Predict, 03 Explain, 04 Prove, 05 Guide — each with one sentence.
+        </div>
+        <div class="check">Check: is the positioning line differentiated enough from generic "AI crowd safety" marketing copy, or does it need a sharper, more specific claim?</div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="review-assets/02-cover-footer.png" alt="Pravaah cover page footer section with four labelled cards: The Decision Clock, The Room, The Red Team, Where people sleep — and a closing call to action band.">
+      <figcaption>
+        <div class="label">Cover — "what no one else has" + closing CTA</div>
+        <div class="cap">
+          Four differentiator cards (The Decision Clock, The Room, The Red Team, Where people sleep), each with a
+          one-paragraph explanation. Closing band: "Same 84,000 people. Same stadium. Same evening. Different
+          decisions." with an "Open the console →" button. Footer credits Team Grid9 / PS-8.
+        </div>
+        <div class="check">Check: do these four cards feel like genuinely distinct capabilities, or do any overlap enough to merge?</div>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ SECTION 2: CONSOLE ============ -->
+  <section>
+    <div class="section-head"><span class="n">02</span><h2>The organiser console — the core product</h2></div>
+    <p class="section-intro">
+      This is where a judge spends most of the demo. Left rail: five numbered steps. Center: a live MapLibre map
+      with a custom canvas overlay (crowd particles, density halos, crush rings). Top center: the Decision Clock.
+      Right: live readouts + a Ravi Sharma attendee-trace card. Bottom: the timeline scrubber with a density strip.
+      Screens below are in the order a judge would actually click through them.
+    </p>
+
+    <figure>
+      <img src="review-assets/03-console-intro.png" alt="Console step 1 Rehearse, intro state, showing facts about DY Patil Stadium (beds, transport, gates) computed from scenario data, with a Rehearse the evening button, map not yet animated.">
+      <figcaption>
+        <div class="label">Step 1 · Rehearse — before pressing play</div>
+        <div class="cap">
+          "Tonight at DY Patil Stadium." Three fact blocks (Beds / Transport / Gates), each sentence built from live
+          scenario data (e.g. "1,880 rooms sit empty in Kharghar and Panvel," "37,000 people come by train... about
+          2,000 people onto the Nerul skywalk every 6 minutes"). CTA: "Rehearse the evening."
+        </div>
+        <div class="check">Check: does this intro screen build enough tension before the button, or is it too dry / report-like compared to the cover page's confidence?</div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="review-assets/04-console-story.png" alt="Console mid-rehearsal, animated map showing crowd flow lines and district labels, caption text overlay reading 14:00 nothing has gone wrong yet, timeline scrubber at bottom.">
+      <figcaption>
+        <div class="label">Step 1 · Rehearse — playing</div>
+        <div class="cap">
+          The scripted opening plays automatically: map shows early, near-empty corridors; a caption band narrates
+          ("14:00. Nothing has gone wrong yet. The gates open in two hours."); the density timeline strip at bottom
+          is filling in as it plays.
+        </div>
+        <div class="check">Check: is the pacing right for a live demo (not too slow, not skippable-feeling)? Note there's a "Skip to the warning" control for time-pressed demos.</div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="review-assets/06-console-decision-clock.png" alt="Console with the Decision Clock hero element active at the top center, showing a large countdown timer 65:57, act now 0 dangerous minutes, and a lever label, with the calm map underneath.">
+      <figcaption>
+        <div class="label">Decision Clock — the hero element</div>
+        <div class="cap">
+          Top-center pill: large monospace countdown <b>65:57</b>, "left to act · closes 19:00," a live "act now: 0
+          dangerous min" line, and the specific lever it refers to ("Tell Nerul arrivals that Gate 5 is empty"). The
+          map underneath is still calm (0.2 people/m²) — this is the "nothing looks wrong yet, but we already know"
+          moment the pitch is built around.
+        </div>
+        <div class="check">Check: is this element visually the loudest thing on the page, as a "hero" should be? Compare its size/color/position against the rest of the header.</div>
+      </figcaption>
+    </figure>
+
+    <div class="grid2">
+      <figure>
+        <img src="review-assets/07-console-explain.png" alt="Console step 3 Explain, showing a list of four causes with horizontal bars indicating how many dangerous minutes each explains, and a highlighted mismatch not shortage callout box.">
+        <figcaption>
+          <div class="label">Step 3 · Explain</div>
+          <div class="cap">
+            "Not too many people. The wrong gate." Four causes tested by removal + re-run, each with a bar showing
+            % of the 72 dangerous minutes it explains. Two different causes each explain ~100% → a highlighted
+            "Mismatch, not shortage" box explaining the insight in plain language.
+          </div>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="review-assets/08-console-explain-chain.png" alt="Console step 3 Explain, scrolled down, showing a numbered causal chain timeline with timestamps reading out how the crush builds minute by minute, read from simulation frames.">
+        <figcaption>
+          <div class="label">Step 3 · Explain — causal chain</div>
+          <div class="cap">
+            A timestamped, numbered chain ("trains arrive in bursts → 47,000 of 84,000 routed to one gate → gate
+            clears 336/min but 660/min arrive → forecourt fills → crush") — every line's numbers read directly out
+            of the simulation frames, not written by hand.
+          </div>
+        </figcaption>
+      </figure>
+    </div>
+
+    <figure>
+      <img src="review-assets/09-console-prove.png" alt="Console step 4 Prove, showing three plan cards Zero rupees, Balanced, Safest with prices and dangerous-minute deltas, Zero rupees expanded showing four specific levers and their individual effect.">
+      <figcaption>
+        <div class="label">Step 4 · Prove — the plan cards</div>
+        <div class="cap">
+          "The best fix costs ₹0." Header states "Pravaah tried 181 plans in 563 ms." Three plan cards (Zero
+          rupees / Balanced ₹1,25,067 / Safest ₹1,33,167), each showing 72→0 dangerous minutes. The recommended
+          card is expanded, listing its four levers with real percentages ("6,447 of 24,000 people follow it
+          (27%) · each saves 31 min · costs nothing").
+        </div>
+        <div class="check">Check: "181 plans in 563 ms" is a strong credibility signal — is it prominent enough, or buried in body text?</div>
+      </figcaption>
+    </figure>
+
+    <div class="grid2">
+      <figure>
+        <img src="review-assets/10-console-prove-rejected.png" alt="Console step 4 Prove, scrolled to show a list titled Fixes that look right but fail, with three rejected plans each showing a dangerous-minute count and a one-line reason why they don't work.">
+        <figcaption>
+          <div class="label">Step 4 · "Fixes that look right, but fail"</div>
+          <div class="cap">
+            Three plausible-but-wrong plans (e.g. "Open 8 more lanes at Gate 5") shown with their actual simulated
+            result and a one-line reason ("Gate 5 is already empty. More lanes do not help, because nobody is
+            walking there."). This is a specific, differentiated feature — most competitors would only show winners.
+          </div>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="review-assets/11-console-prove-board-cost.png" alt="Console step 4 Prove, showing the decision window board listing time-left-to-act per lever, and a cost-of-waiting line chart showing dangerous minutes rising the later the plan is started.">
+        <figcaption>
+          <div class="label">Decision window + cost of waiting</div>
+          <div class="cap">
+            "Time left for each move" (stress-tested against 12 rough nights) plus a small line chart: "the cost of
+            waiting" — dangerous minutes if the plan is started at each point in time, with "start now: 0 dangerous
+            min" marked live.
+          </div>
+        </figcaption>
+      </figure>
+    </div>
+
+    <figure>
+      <img src="review-assets/12-console-redteam.png" alt="Red Team drawer, full width, headline Safe on 48 of 192 rough nights, a horizontal stacked bar of outcome tiers, a large color-coded grid heatmap of 192 test combinations, a breaks-mainly-when tag list, and a worst-night card with a backup plan.">
+      <figcaption>
+        <div class="label">Red Team drawer</div>
+        <div class="cap">
+          "Safe on 48 of 192 rough nights." Stacked bar: 48 safe / 138 better than doing nothing / 0 no change / 6
+          worse than doing nothing. Full heatmap grid (turnout × rain × rail-failure-time × gate-delay × slow-lanes),
+          each cell colored by outcome, worst cell outlined. "It breaks mainly when" tag pills. Bottom: the single
+          worst night found (318 dangerous min with the plan vs 225 doing nothing — plan is <i>worse</i> there,
+          shown honestly) plus an automatically generated backup plan for that specific night.
+        </div>
+        <div class="check">Check: this is dense — is the heatmap legible without hovering, or does it need a simpler summary view for a 5-minute demo? Does showing the plan losing on 6 nights read as honesty (good) or as undermining confidence (risk)?</div>
+      </figcaption>
+    </figure>
+
+    <div class="grid2">
+      <figure>
+        <img src="review-assets/13-console-board-drawer.png" alt="Decision window detail drawer, showing per-lever benefit-over-time line charts across twelve rough nights, with the most cautious deadline line highlighted in brass.">
+        <figcaption>
+          <div class="label">Decision window — detail drawer</div>
+          <div class="cap">
+            Clicking a lever opens per-night benefit curves (dangerous minutes saved vs. time started), one line per
+            rough night, the governing (earliest-closing) night highlighted in brass.
+          </div>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="review-assets/14-console-guide.png" alt="Console step 5 Guide, after a plan is approved, map replaying with the plan in force, left panel showing before-and-after deltas for dangerous minutes, peak density, gate wait, and people outside at showtime.">
+        <figcaption>
+          <div class="label">Step 5 · Guide — after approval</div>
+          <div class="cap">
+            Green "You acted at 17:56 · Zero rupees is in force" badge replaces the Decision Clock. Left panel shows
+            the real re-run deltas (72→0 dangerous min, 5.8→3.7 peak density, 51→29 min gate wait, 35,341→30,782
+            still outside) plus a Ravi/Aarohi personal-story line ("get in at 19:48 instead of 19:56").
+          </div>
+        </figcaption>
+      </figure>
+    </div>
+
+    <figure>
+      <img src="review-assets/15-console-guide-orders.png" alt="Console step 5 Guide, scrolled down, showing order cards: a crowd message with a language picker (Marathi, Hindi, English) and a Play on the PA button, plus staff, transport and accommodation order cards.">
+      <figcaption>
+        <div class="label">Step 5 · Guide — orders ready to send</div>
+        <div class="cap">
+          Crowd-message card with a MR/HI/EN language switcher, "Play on the PA" (browser TTS), "Copy," "Re-word for
+          the PA" (LLM rewording with numbers locked/reinjected), and "Send SMS." Below it, staff/transport/
+          accommodation order cards in plain operational language.
+        </div>
+        <div class="check">Check: does the crowd-message card do too much (language switch + 4 buttons) for one card, or is that density appropriate here?</div>
+      </figcaption>
+    </figure>
+
+    <div class="grid2">
+      <figure>
+        <img src="review-assets/16-console-ledger.png" alt="Black Box ledger drawer, listing eight timestamped, hash-sealed entries such as PLAN APPROVED, REDTEAM, WARNING RAISED, PLAN RECOMMENDED, PLAN REJECTED, FORECAST ISSUED, each with a truncated hash and a plain-language summary.">
+        <figcaption>
+          <div class="label">Black Box ledger</div>
+          <div class="cap">
+            Every forecast/warning/plan/approval logged in order, each with a truncated hash, e.g. "#7 17:55 REDTEAM
+            — Tried to break 'Zero rupees' on 192 rough nights. Safe on 48... (318 dangerous minutes)." "Verify the
+            ledger," "Try to tamper with it," and "Export" controls at top.
+          </div>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="review-assets/18-console-about.png" alt="How this works panel, listing bullet points under headings What the simulation does, How each claim is proven, Why people follow a message, Guessed not measured, and Where the language model is used.">
+        <figcaption>
+          <div class="label">"How this works" disclosure panel</div>
+          <div class="cap">
+            Explicit honesty panel: what's simulated vs. guessed, how each claim (predict/explain/prove/decision
+            window/red team) is proven, and exactly where the LLM is used and how its output is constrained.
+          </div>
+        </figcaption>
+      </figure>
+    </div>
+
+    <figure>
+      <img src="review-assets/17-console-ledger-tamper.png" alt="Black Box ledger drawer after clicking Try to tamper with it, showing a red banner reading entry does not match its seal, we changed one number in a copy and the chain caught it, the real ledger is untouched.">
+      <figcaption>
+        <div class="label">Black Box — live tamper test</div>
+        <div class="cap">
+          Clicking "Try to tamper with it" mutates a copy of one entry and re-verifies live in the browser; the
+          hash-chain check fails and reports exactly which entry broke. This is a real, runnable proof, not a
+          claim in copy.
+        </div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="review-assets/19-console-whatif-rain.png" alt="Console with the Heavy rain from 18:00 what-if chip active, showing a banner with the do-nothing versus with-plan crush minute comparison for the rain scenario, map underneath.">
+      <figcaption>
+        <div class="label">What-if chips</div>
+        <div class="cap">
+          One-click scenario patches (rain, rail failure, delayed show, late gates) plus a free-text box ("ask: what
+          if 20% more people come and it rains?") parsed by an LLM into a structured, clamped patch — never a
+          number directly. Result banner compares do-nothing vs. with-plan for that scenario.
+        </div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="review-assets/20-console-mobile-notice.png" alt="Console loaded on a 390 pixel wide phone viewport, showing a centered notice: The console is built for a big screen, with a Back to the start button, rest of the screen empty.">
+      <figcaption>
+        <div class="label">Console on a phone</div>
+        <div class="cap">
+          Deliberately redirected: "The console is built for a big screen... On a phone, join the crowd instead."
+          The console itself is never attempted at phone width.
+        </div>
+        <div class="check">Check: is this empty state too bare? It's honest, but a judge opening the link on their phone gets almost nothing to look at — worth a small visual (QR to the console URL for desktop? a screenshot preview?) to avoid feeling like a dead end.</div>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ SECTION 3: THE ROOM ============ -->
+  <section>
+    <div class="section-head"><span class="n">03</span><h2>The Room — phones become the crowd</h2></div>
+    <p class="section-intro">
+      Captured end-to-end with two real headless-browser "phones" (English + Marathi) plus 24 simulated phones,
+      against the running dev server: open room → phones join → plan message broadcasts → phones vote → console
+      re-runs the evening with real acceptance rates → each phone gets a personalized outcome. No steps skipped or
+      faked for these screenshots.
+    </p>
+
+    <figure>
+      <img src="review-assets/27-room-open.png" alt="The Room full-screen panel opened from the console, large QR code on the left, room code NERUL-882 in large brass text, right side headline You are in the crowd tonight, and a live count of phones by cohort.">
+      <figcaption>
+        <div class="label">The Room — opened from the console</div>
+        <div class="cap">
+          Full-screen QR + short room code (e.g. "NERUL-882"). Right side: "You are in the crowd tonight," a live
+          "phones in the crowd" count broken down by cohort (Harbour line via Nerul: 13, via Seawoods: 7, Cabs and
+          autos: 5, Late bookings: 1).
+        </div>
+      </figcaption>
+    </figure>
+
+    <div class="grid2">
+      <figure>
+        <img src="review-assets/30-phone-joined-en.png" alt="Phone screen after joining The Room in English, showing the headline You are one of 24,000 people on the harbour line into Nerul tonight, with a waiting-for-control-room pulse indicator at the bottom.">
+        <figcaption>
+          <div class="label">Phone — joined (English)</div>
+          <div class="cap">
+            No login. "You are one of 24,000 people on the harbour line into Nerul tonight." Waiting indicator at
+            the bottom while the control room hasn't acted yet.
+          </div>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="review-assets/31-phone-joined-mr.png" alt="Phone screen after joining The Room in Marathi, same layout as the English version but with Marathi text and Devanagari numerals for the cohort size.">
+        <figcaption>
+          <div class="label">Phone — joined (Marathi)</div>
+          <div class="cap">
+            Same screen, fully localized, including Devanagari numerals (e.g. "१३,०००") — not just translated
+            strings with Latin digits.
+          </div>
+        </figcaption>
+      </figure>
+    </div>
+
+    <div class="grid2">
+      <figure>
+        <img src="review-assets/33-phone-message-en.png" alt="Phone screen showing the crowd guidance message that just arrived: Gate 5 is empty, walk 8 more minutes skip about 31 minutes of queue, with Yes send me and No thanks buttons and a closing countdown.">
+        <figcaption>
+          <div class="label">Phone — message arrives (English)</div>
+          <div class="cap">
+            "Gate 5 is empty. Walk 8 more minutes, skip about 31 minutes of queue." Yes/No buttons, "closes in 23s"
+            countdown. Phone also vibrates on arrival (not visible in a screenshot, but wired via
+            <code>navigator.vibrate</code>).
+          </div>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="review-assets/34-phone-message-mr.png" alt="Phone screen showing the same crowd guidance message in Marathi, with Devanagari script and a countdown.">
+        <figcaption>
+          <div class="label">Phone — message arrives (Marathi)</div>
+          <div class="cap">
+            Same message, fully localized template — this is a fixed, reviewed template with numbers injected, not
+            live-translated by an LLM.
+          </div>
+        </figcaption>
+      </figure>
+    </div>
+
+    <figure>
+      <img src="review-assets/32-room-broadcast.png" alt="The Room console panel after sending the message, showing a live yes/no vote tally bar and countdown while phones are deciding.">
+      <figcaption>
+        <div class="label">Console side — live vote tally</div>
+        <div class="cap">
+          "Message sent · phones are deciding," a live-updating yes/no bar and countdown, polling phone votes in
+          real time.
+        </div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="review-assets/36-room-result.png" alt="The Room console panel after clicking Run the evening with the room, showing a large result headline The room said yes 40 percent, the model predicted 26 percent, and dangerous minutes going from 72 to 0.">
+      <figcaption>
+        <div class="label">Console side — the payoff</div>
+        <div class="cap">
+          "The room said yes <b style="color:var(--safe)">40%</b>. The model predicted <b style="color:var(--brass)">26%</b>." Dangerous
+          minutes re-run live: 72 → 0. A note: "25 votes. Groups with fewer than 2 votes keep the model's estimate.
+          This is a small-sample check on a hand-set assumption, and we say so."
+        </div>
+        <div class="check">Check: this is arguably the single most differentiated moment in the whole product (a judge's own vote changing a live simulation in front of them) — is it staged/paced for maximum impact, or does it arrive too quietly after two buttons?</div>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="review-assets/37-phone-outcome.png" alt="Phone screen showing a personalized outcome after the room result: What happened to people like you, describing walking to Gate 5, getting in at 20:09, and the tightest crowd density encountered.">
+      <figcaption>
+        <div class="label">Phone — personal outcome</div>
+        <div class="cap">
+          "What happened to people like you": "You walked to Gate 5. You got in at 20:09. The tightest crowd you
+          stood in: 2.2 people per m² instead of 5.8," plus the same room-vs-model headline repeated for context.
+        </div>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ SECTION 4: REPLAY ============ -->
+  <section>
+    <div class="section-head"><span class="n">04</span><h2>4 June 2025 replay — the sensitive one</h2></div>
+    <p class="section-intro">
+      A reconstruction of the real Bengaluru stadium crush from public reporting, run through the same engine. This
+      is the highest-risk screen in the product — it has to be accurate, sourced, and respectful, or it actively
+      hurts the pitch.
+    </p>
+
+    <figure>
+      <img src="review-assets/21-replay-top.png" alt="Replay page top section, headline Could a rehearsal have warned in time, an orange disclosure banner reading reconstruction from public reporting illustrative not a finding of fact, three stat tiles for warning time dangerous time and ensemble percentage, and a live map of the stadium area with a scrub bar.">
+      <figcaption>
+        <div class="label">Replay — top</div>
+        <div class="cap">
+          Mandatory disclosure banner at the very top: "Reconstruction from public reporting. Illustrative, not a
+          finding of fact." Headline: "Could a rehearsal have warned in time?" Opens with the human cost, not
+          statistics. Three stat tiles: Warning 14:46 (density passes 2/m²), Dangerous 15:03 (first minute above
+          4/m²), Sixty runs 100% (reach danger, p50 15:05). Live map with a scrub bar, road/gate labels
+          ("Road outside Gates 6–7 (Queens Road side)"), sourced timeline below with numbered citations.
+        </div>
+        <div class="check">Check: does this strike the right tone — informative and evidentiary without being exploitative? Is the disclosure prominent enough, and is it repeated where needed?</div>
+      </figcaption>
+    </figure>
+
+    <div class="grid2">
+      <figure>
+        <img src="review-assets/22-replay-variants.png" alt="Replay page, scrolled down, showing a section titled What the engine says would have mattered most, with four comparison cards for different upstream interventions and their resulting dangerous-minute counts.">
+        <figcaption>
+          <div class="label">Replay — upstream what-ifs</div>
+          <div class="cap">
+            "The cheapest change was upstream, not at the gate." Deliberately does <i>not</i> offer gate-lane plans
+            (documented reason: the engine doesn't cap entry at capacity, so lane plans would overstate safety
+            here) — instead compares upstream interventions like earlier gate opening and pass-only entry.
+          </div>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="review-assets/23-replay-sources.png" alt="Replay page bottom section, listing numbered public sources with outlet names and dates, and a list of stated assumptions used to build the reconstruction.">
+        <figcaption>
+          <div class="label">Replay — sources & assumptions</div>
+          <div class="cap">
+            A numbered source list (outlet + date) matching the inline citations above, plus an explicit
+            assumptions list for anything estimated rather than reported.
+          </div>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ============ SECTION 5: VENUES ============ -->
+  <section>
+    <div class="section-head"><span class="n">05</span><h2>Any venue — the generalization proof</h2></div>
+    <p class="section-intro">
+      Answers the obvious judge question ("is this hardcoded to one stadium?"). Four cached venues plus live
+      OpenStreetMap import; switching venues re-simulates and re-optimizes immediately.
+    </p>
+
+    <div class="grid2">
+      <figure>
+        <img src="review-assets/24-venues-default.png" alt="Venues page with Wankhede Stadium selected, showing a live auto-generated map of gates and approach roads, and a right panel with dangerous minutes, longest gate wait, and two optimizer plans with their levers.">
+        <figcaption>
+          <div class="label">Venues — Wankhede Stadium</div>
+          <div class="cap">
+            Auto-built graph (North Stand gate, D Road gate, Vinoo Mankad gate, real station/hotel names), do-nothing
+            evening re-simulated in 11.2 ms, Zero-rupees and Balanced plans generated fresh for this venue.
+          </div>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="review-assets/25-venues-nms.png" alt="Venues page with Narendra Modi Stadium selected, 132000 capacity, showing dangerous minutes at 19 and gate-lane-based plans, live map with a much larger venue footprint.">
+        <figcaption>
+          <div class="label">Venues — Narendra Modi Stadium</div>
+          <div class="cap">
+            132,000 capacity — the only cached venue whose do-nothing evening shows real danger (19 dangerous
+            minutes), which is a good sign: it wasn't tuned to always show a crisis.
+          </div>
+        </figcaption>
+      </figure>
+    </div>
+
+    <figure>
+      <img src="review-assets/26-venues-chinnaswamy.png" alt="Venues page with M. Chinnaswamy Stadium selected, showing editable estimated levers such as gate lane counts and crowd size with plus and minus steppers.">
+      <figcaption>
+        <div class="label">Venues — M. Chinnaswamy, editable estimates</div>
+        <div class="cap">
+          Every auto-derived number (gate lanes, crowd size) is marked estimated and directly editable with
+          steppers, re-running the simulation live as you adjust.
+        </div>
+        <div class="check">Check: is it clear enough, without reading the small print, which numbers here are "real" (from OSM/spec) vs. estimated defaults?</div>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ CLOSING ASK ============ -->
+  <section>
+    <div class="section-head"><span class="n">06</span><h2>Your review</h2></div>
+    <div class="qlist">
+      <p style="color:var(--text); margin-top:0">Please answer the five numbered questions at the top of this document, using only what you saw above. Where possible, reference the specific screenshot filename (e.g. <code>12-console-redteam.png</code>) so we know exactly which screen you mean. If you'd find it useful, also call out:</p>
+      <ol>
+        <li>Which single screen would you show first if you only had 30 seconds of a judge's attention, and why?</li>
+        <li>Any place where the copy tells the viewer something the visual should be showing instead (or vice versa).</li>
+        <li>Any accessibility or legibility concern you can spot directly from the screenshots (contrast, text size, color-only signal).</li>
+        <li>Whether the dark "control room" visual identity (brass accent, monospace numerals, density color ramp) is applied consistently across all five sections above, or breaks anywhere.</li>
+      </ol>
+    </div>
+  </section>
+
+  <div class="footer-note">
+    Captured with Playwright/Chromium against a local Next.js dev server. Screenshots are unedited PNGs;
+    <span class="pill">38 screenshots</span><span class="pill">6 sections</span><span class="pill">2 live phone clients</span><span class="pill">24 simulated phones</span>.
+    Source: <a href="https://github.com/AmirKhan024/Pravaah">github.com/AmirKhan024/Pravaah</a>.
+  </div>
+
+</div>
+</body>
+</html>

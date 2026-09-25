@@ -4,6 +4,35 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-25 — Phase 6: mobile console notice — replace the dead end
+
+**Changed**
+- New `components/console/MobileNotice.tsx`, replacing the bare "built for a big screen" text
+  block. The console still never attempts to render at phone width (unchanged, correct — it's a
+  control room, not a responsive-design gap) — the notice now gives a phone-holding visitor
+  something to do: a QR code for the console's own URL (`qrcode`, same library and pattern as
+  `RoomPanel.tsx`'s room-join QR) so they can scan it open on a laptop or forward the link, the
+  URL itself in text, a one-line preview of what's on the other end, "Back to the start", and — if
+  a room is currently open (`roomStore`) — a "Join The Room instead →" button linking straight to
+  `/join/[roomId]`.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 45/45 (unchanged — no engine/store logic touched).
+- Live-verified both states: with no room open, the Join button is absent (checked count === 0);
+  with a room open (opened from a desktop-width view of the same page, then resized to phone
+  width), the button appears with the exact correct `href` (`/join/<the real room code>`).
+
+**All six phases of this pass are now committed.** Summary of what's genuinely verified vs. not:
+everything is `tsc`-clean and passes `npx vitest run` (45 tests) after every phase; Phases 1, 4, 5,
+6 are additionally verified live end-to-end in the browser; Phase 2 is verified live against the
+real Supabase project including direct database queries proving persistence, with the sole
+exception of an actual Vercel deployment + two-phones-on-mobile-data test (no access to run from
+here); Phase 3's one-way Telegram send is verified live against the real bot and chat, with the
+Acknowledge/webhook stretch goal deliberately not built (can't be tested without a public HTTPS
+deployment, and the brief explicitly permits stopping there).
+
+---
+
 ## 2026-09-25 — Phase 5: Decision Clock as the actual hero
 
 **Changed**

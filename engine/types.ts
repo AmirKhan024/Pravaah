@@ -38,6 +38,8 @@ export interface Link {
   areaM2?: number;
   /** gate links: which gate zone supplies lanes */
   gate?: string;
+  /** marks a value that was derived automatically and should be checked by a human */
+  estimated?: boolean;
 }
 
 export interface Pulse {

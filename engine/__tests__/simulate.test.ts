@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /*
  * GOLDEN TEST (SOURCE_OF_TRUTH §6.10). golden.json is produced by running the engine code of
  * reference/prototype.html itself (scripts/extract-golden.mjs). The TypeScript port must reproduce
  * it exactly. Do not "improve" the engine without updating this deliberately.
  */
 import { describe, expect, it } from 'vitest';
-import golden from './golden.json';
+import goldenJson from './golden.json';
 import {
   WHATIFS,
   applyWhatIf,
@@ -31,7 +32,9 @@ const closeArr = (a: ArrayLike<number>, b: number[]) => {
   for (let i = 0; i < b.length; i++) close(a[i], b[i], 2e-6);
 };
 
-type G = typeof golden;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const golden = goldenJson as any;
+type G = { base: any };
 function matchSummary(r: SimResult, g: G['base'], opts: { waitHours?: boolean } = {}) {
   expect(r.crushMin).toBe(g.crushMin);
   expect(r.missed).toBe(g.missed);
@@ -114,7 +117,7 @@ describe('optimiser matches the prototype', () => {
 describe('analyses match the prototype', () => {
   it('jitter', () => {
     const j = jitter(dyPatil, 1000);
-    golden.jitterSample.forEach((gc, i) => {
+    golden.jitterSample.forEach((gc: any, i: number) => {
       expect(j.cohorts[i].size).toBe(gc.size);
       close(j.cohorts[i].mean, gc.mean);
       close(j.cohorts[i].std, gc.std);
@@ -133,17 +136,17 @@ describe('analyses match the prototype', () => {
   });
   it('ablation', () => {
     const a = runAblation(dyPatil, base, waits);
-    expect(a.map((x) => [x.name, x.removed, x.left])).toEqual(golden.ablation.map((x) => [x.name, x.removed, x.left]));
+    expect(a.map((x) => [x.name, x.removed, x.left])).toEqual(golden.ablation.map((x: any) => [x.name, x.removed, x.left]));
   });
   it('rejected options', () => {
     const r = runRejected(dyPatil, waits);
-    expect(r.map((x) => [x.name, x.left, x.cost])).toEqual(golden.constraints.map((x) => [x.name, x.left, x.cost]));
+    expect(r.map((x) => [x.name, x.left, x.cost])).toEqual(golden.constraints.map((x: any) => [x.name, x.left, x.cost]));
   });
   it('decision window board', () => {
     const plan = optimiseProfile(dyPatil, 'Zero rupees', waits).chosen;
     const b = computeDecisionBoard(dyPatil, plan);
     expect(b.map((o) => [o.label, o.deadlineTick, o.useless, o.tested, o.worstLabels])).toEqual(
-      golden.decisionBoard.options.map((o) => [o.label, o.deadlineTick, o.useless, o.tested, o.worstLabels]),
+      golden.decisionBoard.options.map((o: any) => [o.label, o.deadlineTick, o.useless, o.tested, o.worstLabels]),
     );
   });
   it('Ravi trace, both evenings', () => {
@@ -156,7 +159,7 @@ describe('analyses match the prototype', () => {
       expect(tr.inside).toBe(g.inside);
       expect(tr.waited).toBe(g.waited);
       close(tr.worst, g.worst);
-      expect(tr.segs.map((s) => [s.type, s.from, s.to])).toEqual(g.segs.map((s) => [s.type, s.from, s.to]));
+      expect(tr.segs.map((s) => [s.type, s.from, s.to])).toEqual(g.segs.map((s: any) => [s.type, s.from, s.to]));
     }
   });
   it('what-ifs', () => {

@@ -132,6 +132,17 @@ export function leverWorth(scn: Scenario, c: Intervention, result: SimResult): s
   return '';
 }
 
+/**
+ * A lever decided at `tick`: messages/coaches/rooms only reach the people who have not left yet
+ * (decisionTick → fracRemaining), and staff/vehicles cannot start before they are ordered.
+ */
+export function retime<T extends Intervention>(iv: T, tick: number): T {
+  const c = { ...iv } as T & { from?: number; decisionTick?: number };
+  if (PARAM_FOR_TYPE[iv.type] === 'from') c.from = Math.max(c.from ?? 0, Math.ceil(tick));
+  else c.decisionTick = Math.max(c.decisionTick ?? 0, Math.round(tick));
+  return c;
+}
+
 /** which timing field a lever's start time lives in (decision window) */
 export const PARAM_FOR_TYPE: Record<Intervention['type'], 'from' | 'decisionTick'> = {
   lanes: 'from',

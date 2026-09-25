@@ -1,0 +1,33 @@
+{
+  "name": "pravaah",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pravaah — a flight simulator for mega-event organisers. Rehearse the evening, find the minute the crowd breaks, prove the fix, and know how long you have left to act.",
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0",
+    "test": "vitest run",
+    "golden:extract": "node scripts/extract-golden.mjs",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "comlink": "^4.4.2",
+    "maplibre-gl": "^5.24.0",
+    "next": "^16.3.6",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.6.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.1"
+  }
+}

@@ -4,6 +4,74 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-25 — Live Ops: a new default landing view, recomposed from existing pieces
+
+**Changed.** New route `/live`, reusing the same global store, `approve()`, the engine worker, and
+the map — nothing here recomputes a simulation or a lever; every number and every lever comes from
+exactly the same place the five-step console already gets them from.
+
+- **`lib/console.ts`**: `opsStatus()` (Calm/Watch/Act now, derived from `decisionDeadline()` and
+  the same ≤15min "urgent" threshold `DecisionClock.tsx` already used — pinned with a new unit
+  test, 7 cases); `opsLevers()` (what's in force, else Plan B, else the recommendation — a thin
+  wrapper over the existing `selectedPlan()`); `skipLever()` and the `expireLevers()` it shares
+  with the automatic tick-driven `checkClock()` (a skip and a missed window now produce the *same*
+  re-plan, because they're the same code path); `openLeverWhy()`; a new shared `sentOrders` record
+  (see the bug below) with `markOrderSent()`/`orderSentAt()`.
+- **`lib/useSimTicker.ts`**: the bare tick-loop, extracted out of the five-step console's `useLoop`
+  so Live Ops can drive the same simulated clock without the console's story-caption narration
+  (which stays in `Console.tsx`, now `useStoryCaptions()`, layered on top of the same shared hook).
+- **`components/console/DecisionClock.tsx`**: exported its `Band` shell so Live Ops's status word
+  reuses the actual hero-band component, not a second copy of its tone/layout classes.
+- **`components/console/Drawers.tsx`**: extracted `BoardOptionCard` (one lever's deadline pill +
+  curve chart) out of `BoardDrawer` so both the full multi-lever drawer and the new, focused
+  `LeverWhyDrawer` (Live Ops's "Why?") render it identically. `LeverWhyDrawer` combines that with
+  `leverWorth()` — the same plain-language payoff line the Plan tab already shows — so "Why?"
+  really is "that lever's existing Prove-tab content," composed from two already-existing pieces.
+- **`components/console/OrdersPanel.tsx`** (new): the order cards (crowd message + staff/
+  transport/accommodation/food, with Copy/SMS/PA/Telegram) extracted out of the Guide step. Used
+  by Guide's new **Orders** tab and by Live Ops's "Orders sent" panel — one implementation, two
+  call sites, not a duplicate. This also required splitting Guide into two tabs ("What changed" /
+  "Orders"), which is the exact restructure Phase 4's report recommended and left for a decision —
+  building it was a direct prerequisite for zone 4 to be a genuine reuse rather than a copy.
+- **`components/live/`**: `StatusBand.tsx` (zone 1), `ActionsDue.tsx` (zone 3 — one card per lever,
+  capped at 4 both because the "Zero rupees" plan's own optimiser depth already bounds it there
+  and defensively via `.slice(0,4)` in case a different, longer plan was approved from the full
+  console first), `Live.tsx` (wires all four zones + the map, centered, using the exact same
+  `FlowMap`/`getState()` call as `Console.tsx`). The map, the "at most 4 numbers" constraint, and
+  the persistent "Full console" link are all satisfied as specified.
+- Cover page: primary/closing CTA now points at `/live` ("Open Live Ops →"); the nav gained a
+  "Full console" link alongside it. The hero CTA ("Rehearse tonight at DY Patil →") was left
+  pointing at `/console`, since its wording is specifically about the guided rehearsal narrative,
+  not live monitoring — changing its destination without changing its label would have been
+  misleading.
+
+**A real bug found and fixed during this build, not before.** The first version had the Actions
+Due card's one-click Approve auto-send its own local "sent" state, while the Orders Sent panel's
+`TelegramButton` tracked "sent" in *its own separate* local state — so after auto-sending via
+Approve, the exact same order still showed an un-clicked "Send to Telegram" button in the other
+panel, which would have sent a duplicate message to the real ops chat if clicked. Fixed by moving
+"has this order been sent, and when" into the shared store (`sentOrders`) that both surfaces read
+and write through — `sendOrderToTelegram()` now marks it in one place, and nothing else keeps its
+own copy. Caught by watching the actual screenshots after a live end-to-end run, not by reasoning
+about the code — worth noting as a case for always verifying live rather than trusting the diff.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 52/52 (7 new for `opsStatus()`, unchanged elsewhere).
+- Live, end-to-end against `npm run dev`, `/live`: status word correctly reads Watch pre-approval
+  and Calm post-approval; exactly 4 numbers visible outside any drawer (three "67 min" countdown
+  pills + one "19:00" in the status band — confirmed by a DOM query scoped to exclude the map
+  canvas and any open drawer); Escape now closes a drawer in Live Ops (it didn't in the first
+  version — no keyboard handling existed there at all; added `useEscToClose()`); Skip on a lever
+  correctly triggers the same re-plan path a missed window would, and the Actions Due list updates
+  to the new plan's levers; Approve on a staff-order lever calls `approve()` and auto-sends to the
+  real Telegram chat, confirmed by the inline "Sent to ops · HH:MM" badge and, after the fix above,
+  confirmed identical in the Orders Sent panel with the same timestamp; "Full console" navigates to
+  `/console` and the five-step flow is untouched (also re-verified end-to-end: rehearse → predict →
+  explain → prove → the new Guide tabs → a real Telegram send from there too, unaffected by the
+  `sentOrders` refactor).
+
+---
+
 ## 2026-09-25 — Phase 6: mobile console notice — replace the dead end
 
 **Changed**

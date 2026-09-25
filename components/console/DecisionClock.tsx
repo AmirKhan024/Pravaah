@@ -22,8 +22,12 @@ const fmt = (mins: number) => {
   return String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
 };
 
-/** the consistent shell every state below renders into — always full-width, always the hero band */
-function Band({ tone, onClick, children }: { tone: 'idle' | 'brass' | 'safe' | 'danger'; onClick?: () => void; children: React.ReactNode }) {
+/**
+ * The consistent shell every state below renders into — always full-width, always the hero band.
+ * Exported so Live Ops's one-word status band (components/live/StatusBand.tsx) can reuse the
+ * exact same visual language instead of a second copy of these tone/layout classes.
+ */
+export function Band({ tone, onClick, children }: { tone: 'idle' | 'brass' | 'safe' | 'danger'; onClick?: () => void; children: React.ReactNode }) {
   const Tag = onClick ? 'button' : 'div';
   return (
     <Tag

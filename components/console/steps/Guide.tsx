@@ -1,163 +1,29 @@
 'use client';
+/*
+ * Phase 4 flagged this step as the most number-dense screen in the app (~24 numbers visible at
+ * once, mostly in the delta box). Restructured here into two tabs — "What changed" (default) and
+ * "Orders" — the same split proposed in docs/PROGRESS.md, and the prerequisite for Live Ops's
+ * "Orders sent" panel to be a genuine reuse of this step's own orders list rather than a copy.
+ */
 import { useState } from 'react';
 import { useSlice } from '@/lib/createStore';
-import { clock, replayOutcome, runRedTeamFor, store, toast, log } from '@/lib/console';
-import { buildOrders, LANGS, nudgeVars, paText, type OrderCard } from '@/lib/messages';
+import { clock, replayOutcome, runRedTeamFor, store } from '@/lib/console';
+import { ordersFor, OrdersPanel } from '../OrdersPanel';
 import { openRoom, roomStore } from '@/lib/room';
-import { speak } from '@/lib/speak';
-import { comma, inr, type Lang } from '@/engine';
-import { Button, cx, Delta, Pill } from '@/components/ui';
+import { comma, inr } from '@/engine';
+import { Button, Delta, Pill, cx } from '@/components/ui';
 import { StepHead } from './StepHead';
 
-const KIND: Record<OrderCard['kind'], string> = { crowd: 'Message to the crowd', staff: 'Staff order', transport: 'Transport order', accommodation: 'Accommodation order', food: 'Food & services' };
+type Tab = 'changed' | 'orders';
 
-function copy(text: string) {
-  navigator.clipboard?.writeText(text).then(
-    () => toast('Copied. Ready to send.'),
-    () => toast('Could not copy. Select the text by hand.'),
-  );
-}
-
-function CrowdCard({ card }: { card: OrderCard }) {
-  const s = useSlice(store, (s) => ({ scn: s.scn, res: s.approved?.result, ivs: s.approved?.ivs }));
-  const [lang, setLang] = useState<Lang>('mr');
-  const [polished, setPolished] = useState<Partial<Record<Lang, string>>>({});
-  const [busy, setBusy] = useState(false);
-  const base = card.langs!.find((l) => l.lang === lang)!.text;
-  const text = polished[lang] || base;
-  const iv = s.ivs?.find((x) => x.type === 'nudge' && x.cohort === card.cohort) as { rupees: number; delta?: number } | undefined;
-  const v = s.res && card.cohort ? nudgeVars(s.scn, card.cohort, s.res, iv?.rupees || 0, iv?.delta) : null;
-  const polish = async () => {
-    setBusy(true);
-    try {
-      const r = await fetch('/api/llm/polish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: base, lang }) }).then((x) => x.json());
-      if (r.ok) {
-        setPolished((p) => ({ ...p, [lang]: r.text }));
-        toast('Re-worded. Every number is still the engine’s.');
-      } else toast(r.reason === 'offline' ? 'Offline: using the fixed template.' : 'Kept the template: ' + (r.reason || 'no change'));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="rounded-xl border border-line bg-panel-2/60 p-4">
-      <div className="kicker mb-1">{KIND.crowd}</div>
-      <div className="text-[14px] font-semibold leading-snug">{card.title}</div>
-      {card.sub ? <div className="mt-1 text-[12px] text-dim">{card.sub}</div> : null}
-      <div className="mt-3 flex gap-1">
-        {LANGS.map((l) => (
-          <button key={l.id} onClick={() => setLang(l.id)} className={cx('rounded-md px-2.5 py-1 text-[12px]', lang === l.id ? 'bg-ink text-brass' : 'text-dim hover:text-text')}>
-            {l.native}
-          </button>
-        ))}
-      </div>
-      <div className={cx('mt-2 rounded-lg border border-line-soft bg-ink/70 px-3 py-2.5 text-[15px] leading-relaxed', lang !== 'en' && 'font-deva')}>{text}</div>
-      {polished[lang] ? <div className="mt-1 text-[10.5px] text-dimmer">re-worded by the language model · numbers locked and re-inserted from the simulation</div> : null}
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <Button
-          size="sm"
-          onClick={() => {
-            if (!v) return;
-            const r = speak(paText(lang, v), lang);
-            toast(r.ok ? `Playing on the PA${r.voice ? ' · ' + r.voice : ''}` : 'This browser has no speech engine.');
-          }}
-        >
-          ▶ Play on the PA
-        </Button>
-        <Button size="sm" onClick={() => copy(text)}>
-          Copy
-        </Button>
-        <Button size="sm" variant="quiet" disabled={busy} onClick={polish}>
-          {busy ? 'Re-wording…' : 'Re-word for the PA'}
-        </Button>
-        <SmsButton text={text} />
-      </div>
-    </div>
-  );
-}
-
-/**
- * Staff/transport/accommodation orders only, per the brief — never the crowd message card, which
- * keeps its own Copy/PA/SMS buttons untouched.
- */
-function TelegramButton({ kind, title, text }: { kind: string; title: string; text: string }) {
-  const [state, setState] = useState<{ s: 'idle' | 'sending' | 'sent' | 'error'; detail?: string }>({ s: 'idle' });
-  const send = async () => {
-    setState({ s: 'sending' });
-    try {
-      const r = await fetch('/api/telegram/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, title, text }) }).then((x) => x.json());
-      if (r.ok) {
-        const d = new Date(r.sentAt);
-        const at = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); // 24h, matching the app's clock everywhere else
-        setState({ s: 'sent', detail: at });
-        log('orders_sent', `Sent "${title}" to the ops Telegram channel.`, { kind, chars: text.length });
-      } else setState({ s: 'error', detail: r.reason || 'Telegram send failed' });
-    } catch {
-      setState({ s: 'error', detail: 'Could not reach the server' });
-    }
-  };
-  if (state.s === 'sent')
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-md bg-safe/10 px-2.5 py-1.5 text-[12.5px] text-safe">
-        <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden>
-          <path d="M3 8.5l3.2 3L13 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        Sent to ops · {state.detail}
-      </span>
-    );
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <Button size="sm" variant="quiet" disabled={state.s === 'sending'} onClick={send}>
-        {state.s === 'sending' ? 'Sending…' : 'Send to Telegram'}
-      </Button>
-      {state.s === 'error' ? <span className="text-[11.5px] text-danger-soft">{state.detail}</span> : null}
-    </span>
-  );
-}
-
-function SmsButton({ text }: { text: string }) {
-  const send = async () => {
-    const to = window.prompt('Send this as an SMS to (a volunteer’s number, e.g. +91…):');
-    if (!to) return;
-    const r = await fetch('/api/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to, text }) })
-      .then((x) => x.json())
-      .catch(() => ({ ok: false }));
-    if (r.ok) {
-      toast('Sent.');
-      log('orders_sent', 'Sent one SMS to a volunteer’s phone.', { chars: text.length });
-    } else {
-      copy(text);
-      toast((r.reason || 'SMS failed') + '. Copied instead.');
-    }
-  };
-  return (
-    <Button size="sm" variant="quiet" onClick={send}>
-      Send SMS
-    </Button>
-  );
-}
-
-export default function Guide() {
-  const s = useSlice(store, (s) => ({ approved: s.approved, base: s.base, scn: s.scn, rc: s.raviCur, rg: s.raviGhost, rt: s.redTeam, rtFor: s.redTeamFor, rtBusy: s.redTeamBusy }));
+function WhatChangedTab() {
+  const s = useSlice(store, (s) => ({ approved: s.approved, base: s.base, scn: s.scn, rc: s.raviCur, rg: s.raviGhost }));
   const room = useSlice(roomStore, (r) => ({ id: r.id, people: r.snap?.participants.length || 0, result: r.result }));
-  const a = s.approved;
-  if (!a)
-    return (
-      <div className="flex flex-col gap-5">
-        <StepHead n={5} verb="Guide" title="Nothing approved yet">
-          Approve a plan in step 4. Pravaah turns it into orders for hotels, transport, gate staff and every phone in the crowd.
-        </StepHead>
-      </div>
-    );
+  const a = s.approved!;
   const r = a.result;
-  const cards = buildOrders(s.scn, a.ivs, r);
   const peak = (x: number[]) => Math.max(...x).toFixed(1);
   return (
-    <div className="flex flex-col gap-5">
-      <StepHead n={5} verb="Guide" title="Send the orders.">
-        “{a.name}” approved at <span className="num text-text">{clock(a.tick)}</span>. Everything below is ready to send. Every number in it comes from the run you just approved.
-      </StepHead>
-
+    <div className="flex flex-col gap-4">
       <div className="rounded-xl border border-safe/35 bg-[#122019] p-4">
         <div className="kicker mb-2 !text-safe">What changes · re-run from {clock(a.tick)}</div>
         <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-[13px]">
@@ -195,27 +61,54 @@ export default function Guide() {
           {room.id ? 'Show the room' : 'Open the room'}
         </Button>
       </div>
+    </div>
+  );
+}
 
-      <div className="flex flex-col gap-3">
-        {cards.map((c, i) =>
-          c.kind === 'crowd' ? (
-            <CrowdCard key={i} card={c} />
-          ) : (
-            <div key={i} className="rounded-xl border border-line bg-panel-2/60 p-4">
-              <div className="kicker mb-1">{KIND[c.kind]}</div>
-              <div className="text-[14px] font-semibold leading-snug">{c.title}</div>
-              <div className="mt-1.5 text-[13px] leading-relaxed text-dim">{c.body}</div>
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                <Button size="sm" onClick={() => copy(c.body || '')}>
-                  Copy
-                </Button>
-                <SmsButton text={c.body || ''} />
-                <TelegramButton kind={KIND[c.kind]} title={c.title} text={c.body || ''} />
-              </div>
-            </div>
-          ),
-        )}
+function OrdersTab() {
+  const s = useSlice(store, (s) => ({ scn: s.scn, approved: s.approved }));
+  const a = s.approved!;
+  const cards = ordersFor(s.scn, a.ivs, a.result);
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[12.5px] leading-relaxed text-dim">Everything below is ready to send. Every number in it comes from the run you just approved.</p>
+      <OrdersPanel cards={cards} />
+    </div>
+  );
+}
+
+export default function Guide() {
+  const s = useSlice(store, (s) => ({ approved: s.approved, rt: s.redTeam, rtFor: s.redTeamFor, rtBusy: s.redTeamBusy }));
+  const [tab, setTab] = useState<Tab>('changed');
+  const a = s.approved;
+  if (!a)
+    return (
+      <div className="flex flex-col gap-5">
+        <StepHead n={5} verb="Guide" title="Nothing approved yet">
+          Approve a plan in step 4. Pravaah turns it into orders for hotels, transport, gate staff and every phone in the crowd.
+        </StepHead>
       </div>
+    );
+  return (
+    <div className="flex flex-col gap-4">
+      <StepHead n={5} verb="Guide" title="Send the orders.">
+        “{a.name}” approved at <span className="num text-text">{clock(a.tick)}</span>.
+      </StepHead>
+
+      <div className="flex gap-1 rounded-lg border border-line bg-ink/50 p-1">
+        {(
+          [
+            ['changed', 'What changed'],
+            ['orders', 'Orders'],
+          ] as [Tab, string][]
+        ).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} className={cx('flex-1 rounded-md px-2 py-1.5 text-[12.5px] font-medium transition-colors', tab === id ? 'bg-panel-2 text-brass' : 'text-dim hover:text-text')}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'changed' ? <WhatChangedTab /> : <OrdersTab />}
 
       <div className="grid grid-cols-2 gap-2">
         <Button onClick={replayOutcome}>Replay the evening</Button>

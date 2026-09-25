@@ -1,10 +1,10 @@
 'use client';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useSlice } from '@/lib/createStore';
-import { clock, store } from '@/lib/console';
+import { clock, opsLevers, store } from '@/lib/console';
 import { planResult } from '@/lib/planCache';
 import { verifyLedger, type LedgerEntry } from '@/lib/ledger';
-import { BOARD_CHECKS, candidates, comma, feasible, inr, type Lever, type RedTeamNight } from '@/engine';
+import { BOARD_CHECKS, candidates, comma, feasible, inr, leverWorth, type BoardOption, type Lever, type RedTeamNight } from '@/engine';
 import { Button, cx, Delta, Kicker, Pill, Row } from '@/components/ui';
 
 function Shell({ title, sub, children, wide }: { title: ReactNode; sub?: ReactNode; children: ReactNode; wide?: boolean }) {
@@ -153,6 +153,50 @@ function RedTeamDrawer() {
   );
 }
 
+/**
+ * One board option's full detail (deadline pill, curves). Extracted so both the full BoardDrawer
+ * (every lever in the plan) and the Live Ops "Why?" drawer (one lever) render identically —
+ * neither recomputes anything, both just display the same already-computed BoardOption.
+ */
+export function BoardOptionCard({ o, t }: { o: BoardOption; t: number }) {
+  const left = o.deadlineTick - t;
+  const max = Math.max(1, ...o.curves.flatMap((c) => c.points.map((p) => p.benefit)));
+  return (
+    <div className="rounded-xl border border-line bg-panel-2/60 p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="text-[14px] font-semibold leading-snug">{o.label}</div>
+        {o.useless ? <Pill>no deadline</Pill> : <Pill tone={left <= 15 ? 'danger' : 'brass'}>{left > 0 ? `closes ${clock(o.deadlineTick)}` : 'closed'}</Pill>}
+      </div>
+      {o.useless ? (
+        <div className="mt-1.5 text-[12.5px] text-dim">On none of the {o.tested} rough nights does starting this at a different time change the number of dangerous minutes by one or more. It is not time-sensitive.</div>
+      ) : (
+        <>
+          <div className="mt-1.5 text-[12.5px] leading-relaxed text-dim">
+            Even on the hardest of the {o.tested} nights ({o.worstLabels.join(' + ') || 'an ordinary night'}), starting it after {clock(o.deadlineTick)} saves less than 15% of what it could.
+          </div>
+          <svg viewBox="0 0 300 70" className="mt-3 w-full">
+            {o.curves.map((c) => (
+              <polyline
+                key={c.night}
+                fill="none"
+                stroke={c.deadline === o.deadlineTick ? '#C9A961' : 'rgba(122,138,133,.35)'}
+                strokeWidth={c.deadline === o.deadlineTick ? 1.8 : 1}
+                points={c.points.map((p, i) => `${10 + (i / (BOARD_CHECKS.length - 1)) * 280},${62 - (p.benefit / max) * 54}`).join(' ')}
+              />
+            ))}
+            {BOARD_CHECKS.map((tk, i) => (
+              <text key={tk} x={10 + (i / (BOARD_CHECKS.length - 1)) * 280} y={70} fontSize="8" fill="#586662" textAnchor="middle" fontFamily="monospace">
+                {clock(tk)}
+              </text>
+            ))}
+          </svg>
+          <div className="text-[10.5px] text-dimmer">dangerous minutes saved if you start at each time · one line per rough night · brass = the night that closes it first</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function BoardDrawer() {
   const s = useSlice(store, (s) => ({ board: s.board, t: Math.floor(s.tick) }));
   return (
@@ -161,44 +205,9 @@ function BoardDrawer() {
         <div className="text-dim">Still testing…</div>
       ) : (
         <div className="flex flex-col gap-4">
-          {s.board.map((o) => {
-            const left = o.deadlineTick - s.t;
-            const max = Math.max(1, ...o.curves.flatMap((c) => c.points.map((p) => p.benefit)));
-            return (
-              <div key={o.id} className="rounded-xl border border-line bg-panel-2/60 p-4">
-                <div className="flex items-baseline justify-between gap-3">
-                  <div className="text-[14px] font-semibold leading-snug">{o.label}</div>
-                  {o.useless ? <Pill>no deadline</Pill> : <Pill tone={left <= 15 ? 'danger' : 'brass'}>{left > 0 ? `closes ${clock(o.deadlineTick)}` : 'closed'}</Pill>}
-                </div>
-                {o.useless ? (
-                  <div className="mt-1.5 text-[12.5px] text-dim">On none of the {o.tested} rough nights does starting this at a different time change the number of dangerous minutes by one or more. It is not time-sensitive.</div>
-                ) : (
-                  <>
-                    <div className="mt-1.5 text-[12.5px] leading-relaxed text-dim">
-                      Even on the hardest of the {o.tested} nights ({o.worstLabels.join(' + ') || 'an ordinary night'}), starting it after {clock(o.deadlineTick)} saves less than 15% of what it could.
-                    </div>
-                    <svg viewBox="0 0 300 70" className="mt-3 w-full">
-                      {o.curves.map((c) => (
-                        <polyline
-                          key={c.night}
-                          fill="none"
-                          stroke={c.deadline === o.deadlineTick ? '#C9A961' : 'rgba(122,138,133,.35)'}
-                          strokeWidth={c.deadline === o.deadlineTick ? 1.8 : 1}
-                          points={c.points.map((p, i) => `${10 + (i / (BOARD_CHECKS.length - 1)) * 280},${62 - (p.benefit / max) * 54}`).join(' ')}
-                        />
-                      ))}
-                      {BOARD_CHECKS.map((t, i) => (
-                        <text key={t} x={10 + (i / (BOARD_CHECKS.length - 1)) * 280} y={70} fontSize="8" fill="#586662" textAnchor="middle" fontFamily="monospace">
-                          {clock(t)}
-                        </text>
-                      ))}
-                    </svg>
-                    <div className="text-[10.5px] text-dimmer">dangerous minutes saved if you start at each time · one line per rough night · brass = the night that closes it first</div>
-                  </>
-                )}
-              </div>
-            );
-          })}
+          {s.board.map((o) => (
+            <BoardOptionCard key={o.id} o={o} t={s.t} />
+          ))}
           <p className="text-[12px] leading-relaxed text-dimmer">The countdown is not a guess. Once the deadline is known, the clock is just deadline minus now. No simulation runs per frame.</p>
         </div>
       )}
@@ -377,6 +386,28 @@ function AboutDrawer() {
  * useful but was cluttering the default demo path (brief: "should not appear in the default demo
  * path at all"). Reachable only via the small "Advanced" link on the Plan tab.
  */
+/**
+ * Live Ops "Why?" — one lever's existing Prove-tab content (leverWorth()'s plain-language payoff,
+ * from the Plan tab, plus its BoardOptionCard, from the Timing tab, if it has a computed deadline)
+ * in a focused drawer, instead of the full multi-lever BoardDrawer. Nothing here is recomputed —
+ * both pieces are the exact same functions/data the five-step console already uses.
+ */
+function LeverWhyDrawer() {
+  const s = useSlice(store, (s) => ({ label: s.drawerLever, scn: s.scn, waits: s.waits, board: s.board, t: Math.floor(s.tick), levers: opsLevers(s), approved: s.approved }));
+  const lever = s.levers.find((l) => l.label === s.label) as Lever | undefined;
+  const result = s.approved ? s.approved.result : planResult(s.scn, s.levers, s.waits);
+  const board = s.board?.find((o) => o.label === s.label);
+  return (
+    <Shell title={s.label || 'This move'} sub={lever ? leverWorth(s.scn, lever, result) : undefined}>
+      {board ? (
+        <BoardOptionCard o={board} t={s.t} />
+      ) : (
+        <p className="text-[13px] leading-relaxed text-dim">No time-window was computed for this move (it may be part of a re-plan made after the original window closed, in which case a fresh deadline hasn&apos;t been tested yet — Pravaah never invents one).</p>
+      )}
+    </Shell>
+  );
+}
+
 function DeckDrawer() {
   const s = useSlice(store, (s) => ({ scn: s.scn, waits: s.waits, base: s.base, user: s.userPlan }));
   const C = useMemo(() => candidates(s.scn), [s.scn]);
@@ -432,5 +463,6 @@ export default function Drawers() {
   if (d === 'report') return <ReportDrawer />;
   if (d === 'about') return <AboutDrawer />;
   if (d === 'deck') return <DeckDrawer />;
+  if (d === 'leverWhy') return <LeverWhyDrawer />;
   return null;
 }

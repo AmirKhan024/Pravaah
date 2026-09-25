@@ -5,6 +5,30 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-25 — Live Ops: "sent" state moved into the shared store, not left per-component
+
+**Decision:** whether an order has been sent to Telegram, and when, now lives in
+`ConsoleState.sentOrders` (a plain `Record<title, "HH:MM">`), written only by
+`sendOrderToTelegram()` and read by both `TelegramButton` (Orders tab / Orders-sent panel) and
+`ActionCard` (Actions Due). Neither component keeps its own local "sent" boolean any more.
+
+**Why:** the first version had each surface tracking "sent" in its own `useState`. Since Live Ops
+lets the same order be sent from either surface (Approve on an Actions Due card auto-sends; the
+Orders tab has its own explicit Send button), that meant the two surfaces could disagree about
+whether a send had already happened — a real path to double-sending the same message to the live
+ops Telegram chat. Caught live: after auto-sending via Approve, the Orders-sent panel still showed
+an unclicked "Send to Telegram" button for the identical order. The alternative (a single flag
+threaded down as a prop) would have worked here but doesn't generalise — any future surface that
+renders the same order (e.g. a notifications list) would reintroduce the same bug. Shared store
+state is the one place that can't drift.
+
+**Trade-off accepted:** `sentOrders` is keyed by order *title* (a human string), not a stable id —
+`buildOrders()` has no id field. Good enough here because titles are deterministic given
+(scenario, levers, result) and never duplicate within one approved plan; would need a real key if
+orders ever became editable or re-orderable.
+
+---
+
 ## 2026-09-25 — Phase 2: service-role writes + anon-SELECT RLS, not per-row ownership policies
 
 **Decision:** every table has RLS enabled with no write policies at all for the anon/publishable

@@ -44,8 +44,11 @@ export default function Home() {
           <Link href="/venues" className="rounded-lg px-3 py-1.5 hover:bg-panel-2 hover:text-text">
             Any venue
           </Link>
-          <Link href="/console" className="ml-2 rounded-lg border border-brass-dim px-3.5 py-1.5 text-brass hover:bg-[#1d1c14]">
-            Open the console
+          <Link href="/console" className="rounded-lg px-3 py-1.5 hover:bg-panel-2 hover:text-text">
+            Full console
+          </Link>
+          <Link href="/live" className="ml-2 rounded-lg border border-brass-dim px-3.5 py-1.5 text-brass hover:bg-[#1d1c14]">
+            Live Ops
           </Link>
         </nav>
       </header>
@@ -120,8 +123,8 @@ export default function Home() {
               Every number in Pravaah comes from running the evening. Causes are proven by removing them and re-running. Fixes are proven by applying them. A language model only helps with words, and never touches a number.
             </p>
           </div>
-          <Link href="/console" className="inline-flex h-12 items-center justify-center rounded-lg bg-brass px-6 text-[15px] font-semibold text-ink hover:bg-brass-glow">
-            Open the console →
+          <Link href="/live" className="inline-flex h-12 items-center justify-center rounded-lg bg-brass px-6 text-[15px] font-semibold text-ink hover:bg-brass-glow">
+            Open Live Ops →
           </Link>
         </div>
       </section>

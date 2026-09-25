@@ -38,7 +38,7 @@ import { engine, proxy } from './engineClient';
 import { appendLedger, loadLedger, type LedgerEntry, type LedgerType } from './ledger';
 
 export type Mode = 'intro' | 'story' | 'live' | 'replay' | 'free';
-export type Drawer = null | 'about' | 'ledger' | 'report' | 'board' | 'chain' | 'redteam' | 'orders' | 'deck';
+export type Drawer = null | 'about' | 'ledger' | 'report' | 'board' | 'chain' | 'redteam' | 'orders' | 'deck' | 'leverWhy';
 
 export interface PlanSummary {
   chosen: Lever[];
@@ -94,7 +94,13 @@ export interface ConsoleState {
   raviCur: Trace;
   raviGhost: Trace | null;
   ledger: LedgerEntry[];
+  /** order title -> "HH:MM" it was sent to Telegram at. One shared source of truth, so a lever
+   *  sent via Live Ops's one-click Approve and the same order shown in the Guide/Orders tab (or
+   *  Live Ops's own Orders-sent panel) never disagree about whether it's already been sent. */
+  sentOrders: Record<string, string>;
   drawer: Drawer;
+  /** which lever the 'leverWhy' drawer (Live Ops) is currently showing */
+  drawerLever: string | null;
   caption: string;
   toast: string;
 }
@@ -135,7 +141,9 @@ function initial(): ConsoleState {
     raviCur: tracePerson(BASE_SCN, base, personPath(BASE_SCN, base), RAVI.release),
     raviGhost: null,
     ledger: [],
+    sentOrders: {},
     drawer: null,
+    drawerLever: null,
     caption: '',
     toast: '',
   };
@@ -298,16 +306,18 @@ export function decisionDeadline(s: ConsoleState = get()): { tick: number; label
   return { tick: o.deadlineTick, label: o.label };
 }
 
-function checkClock() {
+/**
+ * Marks the given lever labels expired and re-plans from `atTick` without them — the one place
+ * this happens, shared by the automatic tick-driven check below and `skipLever()` (Live Ops), so
+ * a manual skip produces exactly the same re-plan as a window closing on its own.
+ */
+function expireLevers(labels: string[], atTick: number) {
+  if (!labels.length) return;
   const s = get();
-  if (s.mode !== 'live' || s.approved || s.replanBusy) return;
-  const d = decisionDeadline(s);
-  if (!d || s.tick < d.tick) return;
-  const closing = (s.board || []).filter((o) => !o.useless && o.deadlineTick <= s.tick && s.expired.indexOf(o.label) < 0).map((o) => o.label);
-  const expired = [...s.expired, ...closing];
+  const expired = [...s.expired, ...labels.filter((l) => s.expired.indexOf(l) < 0)];
+  if (expired.length === s.expired.length) return; // nothing new
   set({ expired, replanBusy: true });
-  log('clock_expired', `The decision window closed at ${clock(s.tick)} for: ${closing.join('; ')}.`, { closing, tick: Math.floor(s.tick) });
-  const atTick = Math.floor(s.tick);
+  log('clock_expired', `The decision window closed at ${clock(atTick)} for: ${labels.join('; ')}.`, { closing: labels, tick: atTick });
   engine()
     .replan(s.scn, atTick, expired)
     .then((r) => {
@@ -319,6 +329,60 @@ function checkClock() {
       log('plan_recommended', `Plan B from ${clock(atTick)}: ${r.chosen.map((c) => c.label).join('; ')}. ${r.crushMin} dangerous minutes (waiting cost ${lostMin}).`, { ...r, atTick });
     })
     .catch(() => set({ replanBusy: false }));
+}
+
+export type OpsStatus = 'calm' | 'watch' | 'act';
+/**
+ * Live Ops's one-word status band. Derived entirely from state that already exists — the same
+ * `decisionDeadline()` the Decision Clock counts down, and the same `urgent` threshold (≤15 min)
+ * DecisionClock.tsx uses for its own pulsing state — so the word and the full console's clock can
+ * never disagree about how much trouble the evening is in.
+ */
+export function opsStatus(s: ConsoleState = get()): OpsStatus {
+  if (s.approved) return 'calm';
+  if (s.replan || s.replanBusy) return 'act';
+  const d = decisionDeadline(s);
+  if (!d) return 'calm';
+  return d.tick - s.tick <= 15 ? 'act' : 'watch';
+}
+
+/** the levers actually worth showing right now: what's in force, else Plan B, else the recommendation */
+export function opsLevers(s: ConsoleState = get()): Lever[] {
+  if (s.approved) return s.approved.ivs as Lever[];
+  return selectedPlan(s)?.chosen || [];
+}
+
+function checkClock() {
+  const s = get();
+  if (s.mode !== 'live' || s.approved || s.replanBusy) return;
+  const d = decisionDeadline(s);
+  if (!d || s.tick < d.tick) return;
+  const closing = (s.board || []).filter((o) => !o.useless && o.deadlineTick <= s.tick && s.expired.indexOf(o.label) < 0).map((o) => o.label);
+  expireLevers(closing, Math.floor(s.tick));
+}
+
+/**
+ * Live Ops "Skip": deliberately closes one lever's window right now, before its own deadline,
+ * instead of waiting for the clock to do it. Reuses the exact same expire-and-replan path a
+ * missed deadline uses — a skip and a missed window produce the same, honest, re-simulated result.
+ */
+/** was this exact order already sent to Telegram, and when? (title is the order's own title, already unique per plan) */
+export function orderSentAt(title: string): string | undefined {
+  return get().sentOrders[title];
+}
+export function markOrderSent(title: string, at: string) {
+  set((s) => ({ sentOrders: { ...s.sentOrders, [title]: at } }));
+}
+
+/** Live Ops "Why?": opens the same per-lever detail the Timing tab's drawer shows, for one lever. */
+export function openLeverWhy(label: string) {
+  set({ drawer: 'leverWhy', drawerLever: label });
+}
+
+export function skipLever(label: string) {
+  const s = get();
+  if (s.approved || s.replanBusy || s.expired.indexOf(label) >= 0) return;
+  expireLevers([label], Math.floor(s.tick));
 }
 
 /** approve: the plan is applied from NOW — late decisions only reach people who have not left yet */

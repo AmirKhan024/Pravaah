@@ -6,14 +6,16 @@
 import Link from 'next/link';
 import { useEffect } from 'react';
 import { useSlice } from '@/lib/createStore';
-import { boot, goStep, store, tickForward } from '@/lib/console';
+import { boot, goStep, store } from '@/lib/console';
 import { openRoom, roomStore } from '@/lib/room';
+import { useSimTicker } from '@/lib/useSimTicker';
 import { RAVI } from '@/engine';
 import FlowMap from '@/components/map/FlowMap';
 import { cx, Logo } from '@/components/ui';
 import DecisionClock from './DecisionClock';
 import Drawers from './Drawers';
 import MobileNotice from './MobileNotice';
+import Toast from './Toast';
 import { RaviCard, Readouts } from './Readouts';
 import Timeline from './Timeline';
 import WhatIfBar from './WhatIfBar';
@@ -34,14 +36,11 @@ const SCRIPT = [
   { t: 214, x: 'Look where the dots are going. Almost everyone walks to Gate 3, because that is where the station is.' },
 ];
 
-function useLoop() {
+/** the story-mode caption narration, layered on top of the shared tick loop below */
+function useStoryCaptions() {
   useEffect(() => {
-    let raf = 0,
-      last = performance.now();
-    const loop = (now: number) => {
-      const dt = Math.min(0.1, (now - last) / 1000);
-      last = now;
-      tickForward(dt);
+    let raf = 0;
+    const loop = () => {
       const s = store.getState();
       if (s.mode === 'story') {
         let idx = -1;
@@ -129,12 +128,6 @@ function Caption() {
   );
 }
 
-function Toast() {
-  const t = useSlice(store, (s) => s.toast);
-  if (!t) return null;
-  return <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-line bg-panel-2 px-4 py-2.5 text-[13px] shadow-xl rise">{t}</div>;
-}
-
 function Legend() {
   return (
     <div className="pointer-events-auto flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-ink/80 px-3 py-1.5 text-[10.5px] text-dim backdrop-blur-[2px]">
@@ -146,7 +139,8 @@ function Legend() {
 }
 
 export default function Console() {
-  useLoop();
+  useSimTicker();
+  useStoryCaptions();
   useKeys();
   useEffect(() => boot(), []);
   const top = useSlice(store, (s) => ({ name: s.scn.name, ledger: s.ledger.length, mode: s.mode }));

@@ -4,6 +4,34 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-25 — Phase 5: Decision Clock as the actual hero
+
+**Changed**
+- `components/console/Console.tsx`: split the old single 64px header row
+  (`grid-rows-[64px_minmax(0,1fr)]`) into a slim 52px top nav (logo, scenario name, Room/Black
+  Box/How-this-works links only) plus a new full-width row directly beneath it
+  (`grid-rows-[52px_auto_minmax(0,1fr)]`) dedicated entirely to the Decision Clock. It was
+  previously an absolutely-positioned pill squeezed into the same 64px bar as the logo and nav —
+  it could never have been much bigger than ~56px tall there without overlapping something.
+- `components/console/DecisionClock.tsx`: every state (loading, counting down, approved, window
+  closed) now renders as a full-width band with a consistent shell, not a small centered pill.
+  The countdown numerals are `text-[56px]` (`sm:text-[64px]`) — measured live against the largest
+  number anywhere else on the page (the readouts panel's "still outside" figure, 44px): the clock
+  is unambiguously the single largest element now. Replaced a DOM-ref/CSS-class trick for the
+  "urgent" (≤15 min) pulsing state with plain React state, since it's a rarely-changing boolean —
+  simpler and more obviously correct than the compound Tailwind selector it replaced.
+- Logic is untouched: same `decisionDeadline()`/`recommended()`/`crushIfStartedAt()` calls, same
+  arithmetic countdown (no re-simulation per frame), same zero-state re-plan behavior.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 45/45 (unchanged — visual-only phase).
+- Live-measured the rendered digit height in every state (loading, counting down at 66:27,
+  approved) via Playwright: the counting-down digits render at exactly 64px, vs. 44px for the
+  largest number anywhere else on the same screen. Screenshots confirm the band reads as the
+  dominant element in all four states, not just the "counting down" one.
+
+---
+
 ## 2026-09-25 — Phase 4: de-verbose the Prove step into tabs
 
 **Changed**

@@ -152,18 +152,15 @@ export default function Console() {
   const room = useSlice(roomStore, (r) => ({ id: r.id, n: r.snap?.participants.length || 0 }));
 
   return (
-    <div className="grid h-dvh grid-rows-[64px_minmax(0,1fr)] overflow-hidden bg-ink">
+    <div className="grid h-dvh grid-rows-[52px_auto_minmax(0,1fr)] overflow-hidden bg-ink">
       <header className="no-print relative z-30 flex items-center gap-4 border-b border-line bg-ink px-5">
         <Link href="/" className="flex items-center gap-2.5 text-brass" aria-label="Pravaah home">
-          <Logo className="size-7" />
-          <span className="text-[15px] font-semibold tracking-[0.2em] text-text">PRAVAAH</span>
+          <Logo className="size-6" />
+          <span className="text-[13px] font-semibold tracking-[0.2em] text-text">PRAVAAH</span>
         </Link>
         <div className="hidden min-w-0 flex-col leading-tight lg:flex">
-          <span className="truncate text-[12.5px] text-text">{top.name}</span>
-          <span className="text-[11px] text-dimmer">rehearsal · every number from the simulation</span>
-        </div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <DecisionClock />
+          <span className="truncate text-[11.5px] text-text">{top.name}</span>
+          <span className="text-[10px] text-dimmer">rehearsal · every number from the simulation</span>
         </div>
         <nav className="ml-auto flex items-center gap-1">
           <button onClick={openRoom} className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12.5px] text-dim hover:bg-panel-2 hover:text-text">
@@ -178,6 +175,13 @@ export default function Console() {
           </button>
         </nav>
       </header>
+
+      {/* Phase 5: the Decision Clock is its own full-width band, the single largest and boldest
+          element on the page in every state — not a small pill sharing the 52px nav row with
+          logo/links, which is all it could ever be at that size. */}
+      <div className="no-print relative z-20">
+        <DecisionClock />
+      </div>
 
       <div className="grid min-h-0 grid-cols-[400px_minmax(0,1fr)]">
         <aside className="no-print z-20 flex min-h-0 flex-col border-r border-line bg-panel">

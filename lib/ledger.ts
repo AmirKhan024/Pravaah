@@ -9,7 +9,20 @@
  * changed. If Supabase is unreachable or unconfigured, every function here falls back to
  * localStorage automatically, exactly as it worked before this phase.
  */
-export type LedgerType = 'forecast_issued' | 'warning_raised' | 'plan_recommended' | 'plan_rejected' | 'plan_approved' | 'orders_sent' | 'room_result' | 'outcome' | 'redteam' | 'clock_expired';
+export type LedgerType =
+  | 'forecast_issued'
+  | 'warning_raised'
+  | 'plan_recommended'
+  | 'plan_rejected'
+  | 'plan_approved'
+  | 'orders_sent'
+  | 'room_result'
+  | 'outcome'
+  | 'redteam'
+  | 'clock_expired'
+  | 'staff_report'
+  | 'tripwire_fired'
+  | 'action_stopped_working';
 
 export interface LedgerEntry {
   seq: number;

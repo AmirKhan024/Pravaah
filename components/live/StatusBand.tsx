@@ -6,18 +6,19 @@
  * disagree about how much trouble the evening is in, because they read the same computed state.
  */
 import { useSlice } from '@/lib/createStore';
-import { clock, decisionDeadline, opsStatus, store } from '@/lib/console';
+import { clock, opsStatus, store } from '@/lib/console';
 import { Band } from '@/components/console/DecisionClock';
 
+/* One status word + one sentence, max 12 words (brief: "ONE sentence, max 12 words") — the
+ * deadline itself lives on the one action card below, as its countdown, not spelled out twice. */
 const COPY = {
   calm: { word: 'Calm', tone: 'safe' as const, sub: 'Nothing due right now.' },
-  watch: { word: 'Watch', tone: 'brass' as const, sub: 'A move is coming due — watch it.' },
-  act: { word: 'Act now', tone: 'danger' as const, sub: 'A move needs a decision.' },
+  watch: { word: 'Watch', tone: 'brass' as const, sub: 'A move is coming due soon.' },
+  act: { word: 'Act now', tone: 'danger' as const, sub: 'A move needs a decision now.' },
 };
 
 export default function StatusBand() {
   const s = useSlice(store, (s) => ({ status: opsStatus(s), approved: s.approved, board: !!s.board }));
-  const deadline = useSlice(store, (st) => decisionDeadline(st));
   if (!s.board)
     return (
       <Band tone="idle">
@@ -31,14 +32,7 @@ export default function StatusBand() {
       <span className="font-display text-[40px] leading-none tracking-tight" style={{ color: c.tone === 'safe' ? 'var(--color-safe)' : c.tone === 'danger' ? 'var(--color-danger-soft)' : 'var(--color-brass)' }}>
         {c.word}
       </span>
-      <span className="flex flex-col gap-0.5 leading-tight">
-        <span className="text-[14px] font-medium text-text">{s.approved ? `You acted at ${clock(s.approved.tick)}` : c.sub}</span>
-        {!s.approved && deadline ? (
-          <span className="text-[12.5px] text-dim">
-            next window closes <span className="num">{clock(deadline.tick)}</span> · {deadline.label}
-          </span>
-        ) : null}
-      </span>
+      <span className="text-[14px] font-medium text-text">{s.approved ? `In force since ${clock(s.approved.tick)}.` : c.sub}</span>
     </Band>
   );
 }

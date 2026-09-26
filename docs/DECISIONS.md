@@ -5,6 +5,46 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-26 — Live control room brief: where this pass overrules the brief, and why
+
+Working from the "calm, live control room" brief (turn Pravaah from a static plan+approve tool
+into a continuous Watch→Detect→Re-plan→Ask loop). Recording every place this pass's judgment
+differs from the brief's literal text, per the brief's own instruction to log overrules here.
+
+**1. VIP stays a "playbook" flag, not a fabricated cohort.** The brief lists VIP as one of six
+buckets and separately asks for VIP "as its own cohort/gate" as a possible missing-scenario
+addition. Rather than bolt on a plausible-looking VIP cohort just so the dot can claim
+`coverage: 'simulated'`, the VIP bucket in `lib/buckets.ts` is honestly `'playbook'`: safe by
+default, watch only from a plain staff-report flag with zero numbers attached. **Why:**
+SOURCE_OF_TRUTH §3's rule — "no LLM ever produces a number," "honesty: guessed data is marked
+illustrative" — is a promise about coverage itself, not just about individual figures. A VIP
+cohort built in an hour to fill a dot would be exactly the kind of "generic dashboard with numbers
+that look real but aren't" the source-of-truth explicitly says the other ~119 teams will build (§2).
+A real VIP cohort (separate gate, separate arrival curve) is deferred to slice (e), opt-in, if time
+remains — not faked now.
+
+**2. The monitor loop reuses the existing full-resimulate-with-clamping pattern, not a new
+engine checkpoint API.** The brief asks for "lock the past, re-run the REST of the evening from
+now." The engine audit found this already exists as a pattern (`retime()` clamps lever start ticks
+to ≥now, `fracRemaining()` reweights only undeparted people, `expireLevers()`/`replan()` already
+do exactly this on every clock-driven re-plan) — it just always pays the full 0..H `simulate()`
+cost (~8ms lite) rather than truly resuming from a saved mid-run state. **Why:** building a real
+checkpoint/resume API would touch `engine/simulate.ts`'s core loop, which SOURCE_OF_TRUTH §14.2/§6.10
+explicitly gates behind "golden test stays green, and any deliberate engine-behaviour change must
+be explained" — a much bigger, riskier change for a cost (~8ms per re-plan) that's already well
+inside the "10s total for background searches" budget (§6.9). The monitor loop is being built as a
+thin driver on top of the existing pattern, not a rewrite.
+
+**3. Number-safe LLM wording reuses `app/api/llm/polish/route.ts`'s placeholder scheme verbatim,
+not a new implementation in `lib/messages.ts`.** The brief's own text suggested the placeholder
+scheme "lives in" the messages/templates layer; the audit found the real, already-proven
+implementation is in the polish API route (mask numbers as `[[i]]` → LLM → reject on any stray/
+missing digit → re-inject). **Why:** it already exists, is already tested against the real Groq
+API, and duplicating it in a second location is exactly the kind of drift SOURCE_OF_TRUTH's
+`peakPulseBurst()` decision (2026-09-25) was written to prevent. Extended, not reimplemented.
+
+---
+
 ## 2026-09-25 — Live Ops: "sent" state moved into the shared store, not left per-component
 
 **Decision:** whether an order has been sent to Telegram, and when, now lives in

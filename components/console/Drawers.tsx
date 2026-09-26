@@ -1,11 +1,14 @@
 'use client';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useSlice } from '@/lib/createStore';
-import { clock, opsLevers, store } from '@/lib/console';
+import { clock, liveBuckets, opsLevers, store } from '@/lib/console';
 import { planResult } from '@/lib/planCache';
 import { verifyLedger, type LedgerEntry } from '@/lib/ledger';
 import { BOARD_CHECKS, candidates, comma, feasible, inr, leverWorth, type BoardOption, type Lever, type RedTeamNight } from '@/engine';
 import { Button, cx, Delta, Kicker, Pill, Row } from '@/components/ui';
+import type { BucketStatus } from '@/lib/buckets';
+import WhatIfBar from './WhatIfBar';
+import { ordersFor, OrdersPanel } from './OrdersPanel';
 
 function Shell({ title, sub, children, wide }: { title: ReactNode; sub?: ReactNode; children: ReactNode; wide?: boolean }) {
   return (
@@ -455,6 +458,65 @@ function DeckDrawer() {
   );
 }
 
+const BUCKET_TONE: Record<BucketStatus, { pill: 'safe' | 'brass' | 'danger'; word: string }> = {
+  safe: { pill: 'safe', word: 'Safe' },
+  watch: { pill: 'brass', word: 'Watch' },
+  act: { pill: 'danger', word: 'Act now' },
+};
+
+/**
+ * Live Ops's per-bucket detail (clicking one of the six status dots). Shows the bucket's own
+ * headline, its risk lines and its honesty tag ("simulated" vs. "playbook") — nothing recomputed,
+ * all read straight off lib/buckets.ts's already-computed BucketInfo.
+ */
+function BucketDrawer() {
+  const s = useSlice(store, (st) => ({ id: st.drawerBucket, buckets: liveBuckets(st) }));
+  const b = s.buckets.find((x) => x.id === s.id);
+  if (!b) return null;
+  const tone = BUCKET_TONE[b.status];
+  return (
+    <Shell
+      title={b.label}
+      sub={
+        <span className="flex items-center gap-2">
+          <Pill tone={tone.pill}>{tone.word}</Pill>
+          <span className="text-dimmer">{b.coverage === 'simulated' ? 'Simulated — from the engine' : 'Playbook — a rule, not modelled'}</span>
+        </span>
+      }
+    >
+      <p className="text-[14px] leading-relaxed text-text">{b.headline}</p>
+      <ul className="mt-4 flex list-disc flex-col gap-1.5 pl-5 text-[13px] leading-relaxed text-dim">
+        {b.risks.map((r, i) => (
+          <li key={i}>{r}</li>
+        ))}
+      </ul>
+    </Shell>
+  );
+}
+
+/** More menu → "Test a what-if" — the console's own WhatIfBar, dropped into a drawer so Live Ops
+ *  can reach it without it living permanently on the calm main screen. */
+function WhatIfDrawer() {
+  return (
+    <Shell title="Test a what-if" sub="Rain, a rail failure, a delayed show, gates opening late, a bigger or smaller crowd. Pravaah re-runs the rest of the evening; nothing here is guessed.">
+      <WhatIfBar />
+    </Shell>
+  );
+}
+
+/** More menu → "Orders sent" — the same order cards and Telegram buttons Live Ops's old always-on
+ *  right rail used to show permanently; moved here so the main screen stays down to one action
+ *  card (brief: "everything else... goes behind one More menu. Do not delete features."). */
+function LiveOrdersDrawer() {
+  const s = useSlice(store, (st) => ({ approved: st.approved, scn: st.scn }));
+  const cards = s.approved ? ordersFor(s.scn, s.approved.ivs, s.approved.result) : [];
+  return (
+    <Shell title="Orders sent" sub="Every order this evening's plan has produced, and whether it has reached the ops Telegram channel.">
+      {cards.length ? <OrdersPanel cards={cards} /> : <div className="text-[13px] text-dim">Nothing approved yet — orders appear here once a move is in force.</div>}
+    </Shell>
+  );
+}
+
 export default function Drawers() {
   const d = useSlice(store, (s) => s.drawer);
   if (d === 'redteam') return <RedTeamDrawer />;
@@ -464,5 +526,8 @@ export default function Drawers() {
   if (d === 'about') return <AboutDrawer />;
   if (d === 'deck') return <DeckDrawer />;
   if (d === 'leverWhy') return <LeverWhyDrawer />;
+  if (d === 'bucket') return <BucketDrawer />;
+  if (d === 'whatif') return <WhatIfDrawer />;
+  if (d === 'liveOrders') return <LiveOrdersDrawer />;
   return null;
 }

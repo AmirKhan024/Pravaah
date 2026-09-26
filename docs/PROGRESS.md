@@ -4,6 +4,84 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-26 — Live control room, slice (a): the calm `/live` screen + More menu
+
+Starting the "static plan → calm live control room" brief. Full audit and chosen approach are in
+this session's transcript, not repeated here; the short version: the engine has no true mid-run
+resume (every "replan" is a full 0..H re-simulate with future-only clamping via `retime()`/
+`fracRemaining()`), which is fine and reused as-is — no engine change in this slice. This slice is
+UI/store only: the existing `/live` (already ~70% of the target per its own Phase log) is
+recomposed into the brief's exact five zones, nothing deleted.
+
+**Changed**
+- **`lib/buckets.ts`** (new): the six status dots' logic. `bucketStatuses()` reads `SimResult`/
+  `Scenario` only — worst gate/plaza/venue density and gate wait (Crowd & gates), worst road/
+  shuttle/walk link density (Getting there), `unhoused`/`lateBookings`/free-far-rooms (Hotels), the
+  active what-if's crush-minute delta (Weather & delays), a plain staff-report flag with no number
+  (VIP — genuinely unmodelled, see below), and `rupees`/`missed` (Money & refunds). Every bucket
+  carries an honest `coverage: 'simulated' | 'playbook'` tag, tested in
+  `lib/__tests__/buckets.test.ts` (7 tests) — crowd/transport/hotels/weather are simulated, vip/
+  money are playbook, pinned so the tag can't silently drift as the UI evolves.
+- **`lib/console.ts`**: `liveBuckets()` (memoised wrapper over `bucketStatuses()` — see the bug
+  below), `openBucket()`/`drawerBucket`, `setVipNote()`/`vipNote` (a plain flag, never a number),
+  two new `Drawer` ids (`bucket`, `whatif`, `liveOrders`). `LedgerType` gained `staff_report`,
+  `tripwire_fired`, `action_stopped_working` — added now since slice (b)/(c) need them and the
+  ledger type is a single shared union; unused until then.
+- **`components/live/StatusDots.tsx`** (new): the six dots. **`Ticker.tsx`** (new): "what changed"
+  — not a new log, just the Black Box's own last entry re-read as one line, so it can never
+  disagree with the ledger. **`MoreMenu.tsx`** (new): one dropdown gathering Ravi/ghost (Report
+  drawer), what-if (WhatIfBar, now also reachable in a drawer), Red Team, decision windows,
+  build-your-own, Orders sent (moved out of Live Ops's old always-on right rail), the Black Box,
+  About, plus links to `/venues`, `/replay`, `/console` — every existing feature, none deleted,
+  all one level deep instead of scattered.
+- **`components/console/Drawers.tsx`**: added `BucketDrawer` (a bucket's headline + risks + the
+  Simulated/Playbook tag), `WhatIfDrawer` (wraps the existing `WhatIfBar` unchanged), and
+  `LiveOrdersDrawer` (the order cards Live Ops used to show permanently, now behind More).
+- **`components/live/ActionsDue.tsx`**: collapsed to **one** action card at a time (brief: "Right:
+  ONE action card"), with "‹ prev / N of M due / next ›" paging when more than one lever is due —
+  never more than one card visible. "Approve" → "Do it", "Skip" → "Not now" (brief: remove
+  "Plan"/"Approve" from the main path; approval is per-action).
+- **`components/live/StatusBand.tsx`**: trimmed to one status word + one sentence, max 12 words
+  (was two lines, the second repeating the deadline the action card's own countdown already
+  shows).
+- **`components/live/Live.tsx`**: map-centred two-column layout (map + the one action card), footer
+  = dots + ticker, header gained the More button. The old fixed left "Actions due" / right "Orders
+  sent" three-column layout is gone; `OrdersSent` moved into `LiveOrdersDrawer`.
+
+**A real bug found live, not before — same class as the one Phase-1's `roomVotes` fix targeted.**
+`useSlice()` (`lib/createStore.ts`) memoises by shallow-comparing the selector's return value
+against a cached one, so a selector that returns a brand-new array of brand-new objects every call
+— which `bucketStatuses()` does, deliberately, by design — never compares equal, so
+`useSyncExternalStore` re-renders every time it's asked to confirm nothing changed, without end.
+First screenshot showed Next's own overlay: "The result of getSnapshot should be cached to avoid
+an infinite loop." Fixed by memoising `liveBuckets()` itself (same pattern as `lib/planCache.ts`)
+against reference identity of `cur`/`base`/`whatIf`/`vipNote`/tick — same inputs now hand back the
+literal same array, so `Object.is` short-circuits before any per-element comparison. Caught by
+actually opening the page in a headless browser and reading Next's dev overlay, not by reasoning
+about the code — the golden lesson from the Live Ops Phase-1 bug repeats: verify live.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 58/59 (the one failure, `venues.test.ts`'s `<30ms` perf
+  assertion, is the same pre-existing flaky-under-load test noted in the 2026-09-25 Phase-1 entry —
+  reran it alone, passed clean).
+- Live, via a Playwright script driving the real `npm run dev` (headless Chromium, `NEXT_PUBLIC_
+  DEMO_OFFLINE=1`): `/live` renders with zero console errors; the More button, all six dot labels,
+  the ticker, "Do it"/"Not now"/"Why?" (and the absence of "Approve"/"Skip" as button text) are all
+  present; clicking a dot opens its drawer showing a Safe/Watch/Act pill and a "Simulated — from
+  the engine" tag; the More menu lists all 8 drawer items and all 3 route links. Screenshots taken
+  at each step. Confirmed the bucket drawer's numbers (density, gate wait, dangerous minutes) match
+  what the map/readouts already show for the same run.
+
+**Overruled, logged to `docs/DECISIONS.md`:** VIP stays untagged as a real cohort (coverage:
+"playbook", status only ever `watch`/`safe` off a manual flag) rather than inventing a VIP gate to
+make the dot look simulated — SOURCE_OF_TRUTH §3's "no LLM/UI number without a `simulate()` behind
+it" extends to not faking simulation coverage either.
+
+**Still open** — slices (b) monitor loop + action lifecycle, (c) tripwires from Red Team, (d)
+dynamic Telegram + Groq report parsing, (e) missing scenarios. Continuing now.
+
+---
+
 ## 2026-09-25 — Live Ops: a new default landing view, recomposed from existing pieces
 
 **Changed.** New route `/live`, reusing the same global store, `approve()`, the engine worker, and

@@ -9,7 +9,7 @@
  * (skipLever() reuses the exact same expire-and-replan path a missed deadline uses; Why? opens
  * the same per-lever detail the Timing tab's drawer already renders).
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSlice } from '@/lib/createStore';
 import { approve, openLeverWhy, opsLevers, orderSentAt, skipLever, store } from '@/lib/console';
 import { ORDER_KIND, ordersFor, sendOrderToTelegram } from '@/components/console/OrdersPanel';
@@ -42,7 +42,7 @@ function ActionCard({ lever }: { lever: Lever }) {
   const isOpsOrder = !!order && order.kind !== 'crowd';
   const sentAt = useSlice(store, () => (order ? orderSentAt(order.title) : undefined));
 
-  const doApprove = async () => {
+  const doIt = async () => {
     if (!store.getState().approved) approve();
     const app = store.getState().approved;
     if (!app) return; // approve() can no-op if there's nothing selected to approve
@@ -65,16 +65,16 @@ function ActionCard({ lever }: { lever: Lever }) {
             <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden>
               <path d="M3 8.5l3.2 3L13 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            {sentAt ? `Approved · sent to ops · ${sentAt}` : 'Approved · in force'}
+            {sentAt ? `Done · sent to ops · ${sentAt}` : 'Done · in force'}
           </span>
         ) : (
-          <Button size="sm" variant="solid" disabled={sending.busy} onClick={doApprove}>
-            {sending.busy ? 'Sending…' : s.approved ? 'Send to ops' : 'Approve'}
+          <Button size="sm" variant="solid" disabled={sending.busy} onClick={doIt}>
+            {sending.busy ? 'Sending…' : s.approved ? 'Send to ops' : 'Do it'}
           </Button>
         )}
         {!s.approved ? (
           <Button size="sm" variant="quiet" disabled={s.expired || s.replanBusy} onClick={() => skipLever(lever.label)}>
-            {s.expired ? 'Skipped' : 'Skip'}
+            {s.expired ? 'Not now · skipped' : 'Not now'}
           </Button>
         ) : null}
         <Button size="sm" variant="quiet" onClick={() => openLeverWhy(lever.label)}>
@@ -86,14 +86,32 @@ function ActionCard({ lever }: { lever: Lever }) {
   );
 }
 
+/** ONE action card at a time (brief: "Right: ONE action card at a time"). If more than one lever
+ *  is due, the rest queue behind small "1 of N" paging — never more than one card shown at once. */
 export default function ActionsDue() {
   const levers = useSlice(store, (s) => opsLevers(s).slice(0, 4));
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (i >= levers.length) setI(0);
+  }, [levers.length, i]);
   if (!levers.length) return <div className="rounded-xl border border-line bg-panel-2/40 p-4 text-[13px] text-dim">Nothing due. Pravaah is still working out the recommended plan.</div>;
+  const lever = levers[Math.min(i, levers.length - 1)];
   return (
     <div className="flex flex-col gap-2">
-      {levers.map((l) => (
-        <ActionCard key={l.label} lever={l} />
-      ))}
+      {levers.length > 1 ? (
+        <div className="flex items-center justify-between text-[11.5px] text-dimmer">
+          <button disabled={i === 0} onClick={() => setI((n) => Math.max(0, n - 1))} className="rounded px-1.5 py-0.5 hover:bg-panel-2 hover:text-text disabled:opacity-30">
+            ‹ prev
+          </button>
+          <span>
+            {i + 1} of {levers.length} due
+          </span>
+          <button disabled={i >= levers.length - 1} onClick={() => setI((n) => Math.min(levers.length - 1, n + 1))} className="rounded px-1.5 py-0.5 hover:bg-panel-2 hover:text-text disabled:opacity-30">
+            next ›
+          </button>
+        </div>
+      ) : null}
+      <ActionCard key={lever.label} lever={lever} />
     </div>
   );
 }

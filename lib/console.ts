@@ -36,9 +36,10 @@ import { createStore } from './createStore';
 import type { WhatIfSpec } from './whatifParse';
 import { engine, proxy } from './engineClient';
 import { appendLedger, loadLedger, type LedgerEntry, type LedgerType } from './ledger';
+import { bucketStatuses, type BucketId, type BucketInfo } from './buckets';
 
 export type Mode = 'intro' | 'story' | 'live' | 'replay' | 'free';
-export type Drawer = null | 'about' | 'ledger' | 'report' | 'board' | 'chain' | 'redteam' | 'orders' | 'deck' | 'leverWhy';
+export type Drawer = null | 'about' | 'ledger' | 'report' | 'board' | 'chain' | 'redteam' | 'orders' | 'deck' | 'leverWhy' | 'bucket' | 'whatif' | 'liveOrders';
 
 export interface PlanSummary {
   chosen: Lever[];
@@ -101,6 +102,11 @@ export interface ConsoleState {
   drawer: Drawer;
   /** which lever the 'leverWhy' drawer (Live Ops) is currently showing */
   drawerLever: string | null;
+  /** which bucket the 'bucket' drawer (Live Ops) is currently showing */
+  drawerBucket: BucketId | null;
+  /** a free-text staff report flagging VIP movement, if one has been logged — a flag, never a
+   *  simulated number (VIP has no cohort/gate of its own; see lib/buckets.ts). */
+  vipNote: string | null;
   caption: string;
   toast: string;
 }
@@ -144,6 +150,8 @@ function initial(): ConsoleState {
     sentOrders: {},
     drawer: null,
     drawerLever: null,
+    drawerBucket: null,
+    vipNote: null,
     caption: '',
     toast: '',
   };
@@ -377,6 +385,30 @@ export function markOrderSent(title: string, at: string) {
 /** Live Ops "Why?": opens the same per-lever detail the Timing tab's drawer shows, for one lever. */
 export function openLeverWhy(label: string) {
   set({ drawer: 'leverWhy', drawerLever: label });
+}
+
+/** Live Ops's six status dots (lib/buckets.ts) — every number in them is read off `cur`/`base`,
+ *  nothing here recomputes a simulation. Memoised by reference identity of its own inputs (same
+ *  pattern as planCache.ts): bucketStatuses() builds a fresh array/objects on every call, and
+ *  useSlice()'s cache only recognises "unchanged" by comparing references, so without this a
+ *  render where nothing actually changed would still hand back new objects and loop forever. */
+let bucketsCache: { cur: SimResult; base: SimResult; whatIf: ConsoleState['whatIf']; vipNote: string | null; t: number; out: BucketInfo[] } | null = null;
+export function liveBuckets(s: ConsoleState = get()): BucketInfo[] {
+  const t = viewTick(s);
+  const c = bucketsCache;
+  if (c && c.cur === s.cur && c.base === s.base && c.whatIf === s.whatIf && c.vipNote === s.vipNote && c.t === t) return c.out;
+  const out = bucketStatuses({ scn: s.scn, cur: s.cur, base: s.base, whatIf: s.whatIf, vipNote: s.vipNote }, t);
+  bucketsCache = { cur: s.cur, base: s.base, whatIf: s.whatIf, vipNote: s.vipNote, t, out };
+  return out;
+}
+export function openBucket(id: BucketId) {
+  set({ drawer: 'bucket', drawerBucket: id });
+}
+/** A staff report flagging VIP movement — a plain flag shown on the VIP dot, never a number the
+ *  engine didn't produce. Pass null to clear it. */
+export function setVipNote(note: string | null) {
+  set({ vipNote: note });
+  if (note) log('staff_report', `Staff report — VIP: ${note}`, { bucket: 'vip', note });
 }
 
 export function skipLever(label: string) {

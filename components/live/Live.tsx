@@ -10,7 +10,6 @@ import Link from 'next/link';
 import { useEffect } from 'react';
 import { useSlice } from '@/lib/createStore';
 import { boot, rehearse, skipStory, store } from '@/lib/console';
-import { ordersFor, OrdersPanel } from '@/components/console/OrdersPanel';
 import { useSimTicker } from '@/lib/useSimTicker';
 import { RAVI } from '@/engine';
 import FlowMap from '@/components/map/FlowMap';
@@ -20,6 +19,9 @@ import RoomPanel from '@/components/room/RoomPanel';
 import { Logo } from '@/components/ui';
 import StatusBand from './StatusBand';
 import ActionsDue from './ActionsDue';
+import StatusDots from './StatusDots';
+import Ticker from './Ticker';
+import MoreMenu from './MoreMenu';
 
 /** Reaches the same 'live' mode the console's own "Skip to the warning" button does — reused
  *  verbatim (rehearse() + skipStory()), not a new state transition. Live Ops has no story/intro
@@ -45,13 +47,6 @@ function useReachLive() {
   }, []);
 }
 
-function OrdersSent() {
-  const s = useSlice(store, (s) => ({ approved: s.approved, scn: s.scn }));
-  if (!s.approved) return <div className="rounded-xl border border-line bg-panel-2/40 p-4 text-[13px] text-dim">Nothing approved yet — orders appear here once a plan is in force.</div>;
-  const cards = ordersFor(s.scn, s.approved.ivs, s.approved.result);
-  return <OrdersPanel cards={cards} />;
-}
-
 export default function Live() {
   useReachLive();
   useSimTicker();
@@ -59,26 +54,24 @@ export default function Live() {
   const scnName = useSlice(store, (s) => s.scn.name);
 
   return (
-    <div className="grid h-dvh grid-rows-[48px_auto_minmax(0,1fr)] overflow-hidden bg-ink">
+    <div className="grid h-dvh grid-rows-[48px_auto_minmax(0,1fr)_auto] overflow-hidden bg-ink">
       <header className="no-print flex items-center gap-4 border-b border-line bg-ink px-5">
         <Link href="/" className="flex items-center gap-2.5 text-brass" aria-label="Pravaah home">
           <Logo className="size-6" />
           <span className="text-[13px] font-semibold tracking-[0.2em] text-text">PRAVAAH</span>
         </Link>
         <span className="hidden truncate text-[11.5px] text-dimmer lg:inline">{scnName} · live ops</span>
-        <Link href="/console" className="ml-auto rounded-lg border border-brass-dim/60 px-3 py-1.5 text-[12.5px] text-brass hover:bg-panel-2">
-          Full console →
-        </Link>
+        <div className="ml-auto flex items-center gap-2">
+          <MoreMenu />
+          <Link href="/console" className="rounded-lg border border-brass-dim/60 px-3 py-1.5 text-[12.5px] text-brass hover:bg-panel-2">
+            Full console →
+          </Link>
+        </div>
       </header>
 
       <StatusBand />
 
-      <div className="grid min-h-0 grid-cols-[340px_minmax(0,1fr)_340px]">
-        <aside className="no-print flex min-h-0 flex-col gap-3 overflow-y-auto border-r border-line bg-panel p-4">
-          <div className="kicker">Actions due</div>
-          <ActionsDue />
-        </aside>
-
+      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_340px]">
         <main className="relative min-h-0 overflow-hidden">
           <FlowMap
             fitKey="dyPatil"
@@ -90,10 +83,15 @@ export default function Live() {
         </main>
 
         <aside className="no-print flex min-h-0 flex-col gap-3 overflow-y-auto border-l border-line bg-panel p-4">
-          <div className="kicker">Orders sent</div>
-          <OrdersSent />
+          <div className="kicker">Do next</div>
+          <ActionsDue />
         </aside>
       </div>
+
+      <footer className="no-print border-t border-line bg-panel">
+        <StatusDots />
+        <Ticker />
+      </footer>
 
       <Drawers />
       <RoomPanel />

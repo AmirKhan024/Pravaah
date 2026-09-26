@@ -84,7 +84,7 @@ export default function Home() {
             <span>Works offline</span>
           </div>
         </div>
-        <div className="relative h-[420px] overflow-hidden rounded-3xl border border-line bg-[#0c1211] sm:h-[560px]">
+        <div className="relative h-[420px] overflow-hidden rounded-3xl border border-line bg-ink-deep sm:h-[560px]">
           <CoverVisual />
         </div>
       </section>

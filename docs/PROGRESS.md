@@ -4,6 +4,29 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-26 — Cover page hero visual: theme-aware, pin-style gate markers
+
+**Changed**
+- `components/cover/CoverFlow.tsx`: added a Light/Night `PALETTE` (Night = the exact original
+  colors) read via `document.documentElement.dataset.theme`; gate markers are now teardrop pins
+  (matching `reference/ui-mockup.html`'s pin language) labelled with `legendWord()` (plain-language
+  density, e.g. "Comfortable") before the raw `/m²` number; origin rows get a small mode-coloured
+  swatch (rail/road/walk). Adjusted the `gx`/`ox` layout constants — the added word made gate
+  labels wider, which initially overflowed the card's right edge; fixed by moving gates to 68%
+  width instead of 80%.
+- `app/page.tsx`: the hero panel's hardcoded `bg-[#0c1211]` is now `bg-ink-deep` (theme token).
+- Every number drawn is still read straight from `SimResult` frames each animation frame — nothing
+  here became a static image or a guessed value; only color/shape/labels changed.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 52/52. `git diff --stat -- engine worker`: no changes.
+- Playwright screenshots of `/` in both themes: Light renders cream/teal pins with readable,
+  non-overflowing labels; Night reproduces the original dark palette; both show live, changing
+  clock/ms values confirming the visual is still driven by a real per-frame simulation read, not a
+  cached image.
+
+---
+
 ## 2026-09-26 — Simple-UI migration, Phase 2: shell, More menu, theme toggle, plain-language step labels
 
 **Changed**

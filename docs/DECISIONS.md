@@ -5,6 +5,28 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-26 — Cover page hero visual (CoverFlow.tsx): pin markers + theme-aware, not a second map
+
+**Decision:** `components/cover/CoverFlow.tsx` — the live-simulated schematic on `/` (streams
+flowing into Gate 1/3/5) — is what the user's screenshot of "the map, still in the old format"
+actually showed, not the console's `FlowMap.tsx`. It's now theme-aware (a hand-picked Light/Night
+`PALETTE`, since canvas draws can't use Tailwind classes) and its gate markers are teardrop pins
+colour-coded by density with a plain-language status word (`legendWord()`, the same vocabulary as
+the console map's legend) before the raw number, and origin rows get a small mode-coloured badge —
+borrowing `reference/ui-mockup.html`'s pin/marker *language*, not its fictional geometry.
+
+**Why not rebuild it as a literal copy of the mockup's illustrated city:** this component's own
+header comment says it plainly — "the engine, not an illustration." It's an intentionally abstract
+schematic (fixed fractional y-positions, not real lat/lng), and every particle, channel width and
+gate colour already comes straight from `SimResult` frames. The mockup's roads/buildings/water/
+stadium are hand-drawn for a fictional layout; copying that wholesale here would mean either (a)
+faking geometry that doesn't correspond to any real computed value even though this panel's whole
+purpose is proving nothing is faked, or (b) a large illustrated-map engine for a ~500px decorative
+hero panel. The full illustrated-map treatment belongs on `FlowMap.tsx`, the actual interactive
+console map operators use — that's next.
+
+---
+
 ## 2026-09-26 — Simple-UI migration, Phase 2: What-ifs moved behind More; "All clear" is calm+approved, not a new status
 
 **Decision:** `WhatIfBar` (the chip row + free-text question + result panel) no longer floats

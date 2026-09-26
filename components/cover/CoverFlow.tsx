@@ -6,28 +6,41 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { clockFor, dyPatil, probeWaits, simulate, type SimResult } from '@/engine';
-import { denColor } from '@/lib/colors';
+import { denColor, legendWord } from '@/lib/colors';
 
 interface Stream {
   links: string[];
   y: number;
   gate: string;
   label: string;
+  kind: 'rail' | 'road' | 'walk';
 }
 // origin streams (left) → plaza/gate (right), laid out schematically
 const STREAMS: Stream[] = [
-  { links: ['L5'], y: 0.12, gate: 'gate1', label: 'Vashi hotels' },
-  { links: ['L4'], y: 0.24, gate: 'gate1', label: 'Sector 20 parking' },
-  { links: ['L1'], y: 0.4, gate: 'gate3', label: 'Nerul station' },
-  { links: ['L2'], y: 0.5, gate: 'gate3', label: 'Seawoods' },
-  { links: ['L3'], y: 0.6, gate: 'gate3', label: 'Palm Beach cabs' },
-  { links: ['L6', 'L7', 'L8', 'L15', 'L16'], y: 0.8, gate: 'gate5', label: 'Belapur · Kharghar · Panvel' },
+  { links: ['L5'], y: 0.12, gate: 'gate1', label: 'Vashi hotels', kind: 'road' },
+  { links: ['L4'], y: 0.24, gate: 'gate1', label: 'Sector 20 parking', kind: 'walk' },
+  { links: ['L1'], y: 0.4, gate: 'gate3', label: 'Nerul station', kind: 'rail' },
+  { links: ['L2'], y: 0.5, gate: 'gate3', label: 'Seawoods', kind: 'rail' },
+  { links: ['L3'], y: 0.6, gate: 'gate3', label: 'Palm Beach cabs', kind: 'road' },
+  { links: ['L6', 'L7', 'L8', 'L15', 'L16'], y: 0.8, gate: 'gate5', label: 'Belapur · Kharghar · Panvel', kind: 'road' },
 ];
 const GATES = [
   { id: 'gate1', plaza: 'fc_north', y: 0.2, name: 'Gate 1' },
   { id: 'gate3', plaza: 'fc_west', y: 0.5, name: 'Gate 3' },
   { id: 'gate5', plaza: 'fc_east', y: 0.8, name: 'Gate 5' },
 ];
+
+/*
+ * Light/Night palettes (docs/DECISIONS.md, 2026-09-26 — matching reference/ui-mockup.html's
+ * illustrated map language). Night's values are the exact originals, preserved; this is a canvas,
+ * so it reads the theme attribute directly rather than through Tailwind classes.
+ */
+const PALETTE = {
+  light: { channel: 'rgba(20,58,53,.08)', label: '#5b6f6b', gate: '#143a35', gateDanger: '#c23b3f', sub: '#5b6f6b', subDanger: '#c23b3f', pinRing: 'rgba(255,255,255,.9)', card: '#ffffff', cardText: '#143a35' },
+  dark: { channel: 'rgba(220,229,225,.05)', label: 'rgba(122,138,133,.8)', gate: 'rgba(220,229,225,.9)', gateDanger: '#F0A594', sub: 'rgba(122,138,133,.95)', subDanger: '#F0A594', pinRing: 'rgba(16,23,21,.9)', card: '#16201e', cardText: '#dce5e1' },
+};
+const KIND_COLOR = { rail: '#0f766e', road: '#e8912d', walk: '#8592d0' } as const;
+const isDark = () => document.documentElement.dataset.theme === 'dark';
 
 export default function CoverFlow() {
   const cv = useRef<HTMLCanvasElement>(null);
@@ -83,9 +96,10 @@ export default function CoverFlow() {
       }
       const t = Math.floor(tick);
       const f = res.frames[t];
+      const P = isDark() ? PALETTE.dark : PALETTE.light;
       ctx.clearRect(0, 0, W, H);
-      const gx = W * 0.8;
-      const ox = W * 0.04;
+      const gx = W * 0.68;
+      const ox = W * 0.05;
       // streams
       STREAMS.forEach((s, si) => {
         const occ = s.links.reduce((a, id) => a + f.linkOcc[li[id]], 0);
@@ -101,7 +115,7 @@ export default function CoverFlow() {
           return { x, y: y0 + (y1 - y0) * e };
         };
         // channel
-        ctx.strokeStyle = 'rgba(220,229,225,.05)';
+        ctx.strokeStyle = P.channel;
         ctx.lineWidth = 16;
         ctx.lineCap = 'round';
         ctx.beginPath();
@@ -124,42 +138,64 @@ export default function CoverFlow() {
           ctx.arc(p.x, p.y + j, 1.3, 0, 6.2832);
           ctx.fill();
         }
-        ctx.fillStyle = 'rgba(122,138,133,.8)';
+        // origin marker: a small rounded badge, coloured by mode — mirrors the mockup's
+        // train/car/parking pins (reference/ui-mockup.html's marker()), kept simple here since
+        // this is a schematic overview, not the interactive console map.
+        ctx.fillStyle = KIND_COLOR[s.kind];
+        const bx = ox - 3,
+          by = y0 - 20;
+        ctx.beginPath();
+        ctx.roundRect(bx - 6, by - 6, 12, 12, 3.5);
+        ctx.fill();
+        ctx.fillStyle = P.label;
         ctx.font = '500 11px ui-sans-serif, system-ui, sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(s.label, ox, y0 - 12);
+        ctx.fillText(s.label, ox + 8, y0 - 12);
       });
-      // gates
+      // gates — a teardrop pin, colour-coded by density, with a plain-language status word
+      // (legendWord(), the same vocabulary the console map's legend uses) before the raw number.
       GATES.forEach((g) => {
         const den = f.zoneDen[zi[g.plaza]];
         const y = H * g.y;
-        const r = 10 + Math.min(24, den * 5);
-        const halo = ctx.createRadialGradient(gx, y, 2, gx, y, r + 30);
-        halo.addColorStop(0, denColor(den, 0.55));
+        const c = denColor(Math.max(0.3, den), 1);
+        const danger = den >= 4;
+        const halo = ctx.createRadialGradient(gx, y, 2, gx, y, 30 + Math.min(24, den * 5) + 30);
+        halo.addColorStop(0, denColor(den, 0.5));
         halo.addColorStop(1, denColor(den, 0));
         ctx.fillStyle = halo;
         ctx.beginPath();
-        ctx.arc(gx, y, r + 30, 0, 6.2832);
+        ctx.arc(gx, y, 30 + Math.min(24, den * 5) + 30, 0, 6.2832);
         ctx.fill();
-        ctx.fillStyle = denColor(Math.max(0.3, den), 1);
+        // pin body
+        ctx.save();
+        ctx.translate(gx, y);
         ctx.beginPath();
-        ctx.arc(gx, y, 7, 0, 6.2832);
+        ctx.moveTo(0, 9);
+        ctx.bezierCurveTo(-4, -1, -13, -4, -13, -13);
+        ctx.arc(0, -13, 13, Math.PI, 0);
+        ctx.bezierCurveTo(13, -4, 4, -1, 0, 9);
+        ctx.closePath();
+        ctx.fillStyle = c;
         ctx.fill();
-        if (den >= 4) {
+        ctx.strokeStyle = P.pinRing;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+        if (danger) {
           const ph = Math.sin(anim * 4);
           ctx.strokeStyle = `rgba(240,165,148,${0.4 + 0.35 * ph})`;
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.arc(gx, y, r + 8 + 3 * ph, 0, 6.2832);
+          ctx.arc(gx, y - 13, 16 + 3 * ph, 0, 6.2832);
           ctx.stroke();
         }
         ctx.textAlign = 'left';
-        ctx.fillStyle = den >= 4 ? '#F0A594' : 'rgba(220,229,225,.9)';
+        ctx.fillStyle = danger ? P.gateDanger : P.gate;
         ctx.font = '600 13px ui-sans-serif, system-ui, sans-serif';
-        ctx.fillText(g.name, gx + 26, y - 2);
-        ctx.font = '500 12px ui-monospace, monospace';
-        ctx.fillStyle = den >= 4 ? '#F0A594' : 'rgba(122,138,133,.95)';
-        ctx.fillText(den.toFixed(1) + ' people/m²', gx + 26, y + 14);
+        ctx.fillText(g.name, gx + 22, y - 15);
+        ctx.font = '500 11.5px ui-sans-serif, system-ui, sans-serif';
+        ctx.fillStyle = danger ? P.subDanger : P.sub;
+        ctx.fillText(legendWord(den) + ' · ' + den.toFixed(1) + '/m²', gx + 22, y + 1);
       });
       if (clockRef.current) clockRef.current.textContent = clockFor(dyPatil, t);
       raf = requestAnimationFrame(draw);

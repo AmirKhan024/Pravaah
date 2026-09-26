@@ -90,7 +90,7 @@ export interface ConsoleState {
   replan?: { chosen: Lever[]; crushMin: number; rupees: number; missed: number; atTick: number; lostMin: number; lostRupees: number };
   replanBusy: boolean;
   approved: Approved | null;
-  whatIf: { id: WhatIfId | 'custom'; label: string; say: string; patch?: WhatIfPatch; none: SimResult; withPlan: SimResult | null; source?: string } | null;
+  whatIf: { id: WhatIfId | 'custom'; label: string; say: string; patch?: WhatIfPatch; none: SimResult; withPlan: SimResult | null; source?: string; confidenceScore?: number | null } | null;
   raviCur: Trace;
   raviGhost: Trace | null;
   ledger: LedgerEntry[];
@@ -464,7 +464,7 @@ export function runWhatIf(id: WhatIfId | 'custom', custom?: { label: string; say
   caption(w.say);
 }
 /** a typed question, parsed into a validated spec (LLM or word matching), run through the same engine */
-export function runWhatIfSpec(spec: WhatIfSpec, label: string, say: string, source: string) {
+export function runWhatIfSpec(spec: WhatIfSpec, label: string, say: string, source: string, confidenceScore?: number | null) {
   const s = get();
   const { scn, opts } = buildNight(s.scn, {
     turnout: 1 + spec.turnoutPct / 100,
@@ -483,7 +483,7 @@ export function runWhatIfSpec(spec: WhatIfSpec, label: string, say: string, sour
   const withPlan = ivs.length ? simulate(scn, ivs, { ...opts, waits }) : null;
   const shown = withPlan || none;
   set({
-    whatIf: { id: 'custom', label, say, none, withPlan, source },
+    whatIf: { id: 'custom', label, say, none, withPlan, source, confidenceScore },
     cur: shown,
     ghost: s.base,
     curLabel: label + (withPlan ? ' · plan in force' : ' · no plan'),

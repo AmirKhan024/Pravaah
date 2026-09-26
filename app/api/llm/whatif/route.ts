@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isNugenEnabled, nugenJSON } from '@/lib/nugen';
 import { groqJSON, llmEnabled } from '@/lib/groq';
 import { describeSpec, localParse, sanitizeSpec } from '@/lib/whatifParse';
 
@@ -13,16 +14,50 @@ export async function POST(req: Request) {
   const { q } = (await req.json().catch(() => ({}))) as { q?: string };
   const question = String(q || '').slice(0, 300);
   if (!question.trim()) return NextResponse.json({ ok: false }, { status: 400 });
-  let source: 'llm' | 'local' = 'local';
+
+  let source: 'nugen' | 'llm' | 'local' = 'local';
   let spec = null;
-  if (llmEnabled()) {
+  let confidenceScore: number | null = null;
+  let model: string | null = null;
+
+  // 1. Mandatory HackCelestial Requirement: Nugen Domain-Aligned Model
+  if (isNugenEnabled()) {
+    const nugenRes = await nugenJSON<Record<string, unknown>>(SYSTEM, question);
+    if (nugenRes && nugenRes.data && nugenRes.data.understood !== false) {
+      spec = sanitizeSpec(nugenRes.data);
+      if (spec) {
+        source = 'nugen';
+        confidenceScore = nugenRes.confidenceScore;
+        model = nugenRes.model;
+      }
+    }
+  }
+
+  // 2. Secondary fallback: Groq (if Nugen key not yet configured)
+  if (!spec && llmEnabled()) {
     const raw = (await groqJSON(SYSTEM, question)) as Record<string, unknown> | null;
     if (raw && raw.understood !== false) {
       spec = sanitizeSpec(raw);
       if (spec) source = 'llm';
     }
   }
+
+  // 3. Deterministic local keyword fallback
   if (!spec) spec = localParse(question);
-  if (!spec) return NextResponse.json({ ok: false, source, message: 'Pravaah can test rain, a rail failure, gates opening late, a delayed show, a bigger or smaller crowd, or slow bag checks.' });
-  return NextResponse.json({ ok: true, source, spec, ...describeSpec(spec) });
+  if (!spec) {
+    return NextResponse.json({
+      ok: false,
+      source,
+      message: 'Pravaah can test rain, a rail failure, gates opening late, a delayed show, a bigger or smaller crowd, or slow bag checks.',
+    });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    source,
+    confidenceScore,
+    model,
+    spec,
+    ...describeSpec(spec),
+  });
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isNugenEnabled, nugenJSON } from '@/lib/nugen';
 import { groqJSON, llmEnabled } from '@/lib/groq';
 
 export const dynamic = 'force-dynamic';
@@ -16,22 +17,54 @@ export async function POST(req: Request) {
   const { text, lang } = (await req.json().catch(() => ({}))) as { text?: string; lang?: string };
   const src = String(text || '').slice(0, 600);
   if (!src || !NAMES[lang || '']) return NextResponse.json({ ok: false }, { status: 400 });
-  if (!llmEnabled()) return NextResponse.json({ ok: false, text: src, reason: 'offline' });
+
+  const nugenOn = isNugenEnabled();
+  const groqOn = llmEnabled();
+
+  if (!nugenOn && !groqOn) {
+    return NextResponse.json({ ok: false, text: src, reason: 'offline' });
+  }
+
   const nums: string[] = [];
   const masked = src.replace(DIGITS, (m) => {
     nums.push(m);
     return `[[${nums.length - 1}]]`;
   });
-  const raw = (await groqJSON(
-    `You rewrite short crowd-guidance messages for a stadium public-address system in ${NAMES[lang!]}. Keep it calm, warm, plain and short (max 2 sentences). Each placeholder like [[0]] stands for a number with its unit (for example "eight minutes"); keep every placeholder exactly once, unchanged, and in a sentence where its meaning stays clear. Never write any digit or number word. Never add facts. Return JSON {"text": "..."} in ${NAMES[lang!]}.`,
-    masked,
-  )) as { text?: string } | null;
-  const out = raw?.text;
-  if (!out || typeof out !== 'string') return NextResponse.json({ ok: false, text: src, reason: 'no output' });
+
+  const systemPrompt = `You rewrite short crowd-guidance messages for a stadium public-address system in ${NAMES[lang!]}. Keep it calm, warm, plain and short (max 2 sentences). Each placeholder like [[0]] stands for a number with its unit (for example "eight minutes"); keep every placeholder exactly once, unchanged, and in a sentence where its meaning stays clear. Never write any digit or number word. Never add facts. Return JSON {"text": "..."} in ${NAMES[lang!]}.`;
+
+  let out: string | undefined = undefined;
+  let source: 'nugen' | 'llm' = 'llm';
+  let confidenceScore: number | null = null;
+
+  // 1. Try Nugen Aligned Model
+  if (nugenOn) {
+    const nugenRes = await nugenJSON<{ text?: string }>(systemPrompt, masked);
+    if (nugenRes && nugenRes.data?.text && typeof nugenRes.data.text === 'string') {
+      out = nugenRes.data.text;
+      source = 'nugen';
+      confidenceScore = nugenRes.confidenceScore;
+    }
+  }
+
+  // 2. Fallback to Groq
+  if (!out && groqOn) {
+    const raw = (await groqJSON(systemPrompt, masked)) as { text?: string } | null;
+    out = raw?.text;
+    source = 'llm';
+  }
+
+  if (!out || typeof out !== 'string') {
+    return NextResponse.json({ ok: false, text: src, reason: 'no output' });
+  }
+
   const ph: string[] = out.match(/\[\[(\d+)\]\]/g) || [];
   const clean = out.replace(/\[\[(\d+)\]\]/g, '');
   const sameSet = ph.length === nums.length && nums.every((_, i) => ph.includes(`[[${i}]]`));
-  if (/[0-9०-९]/.test(clean) || !sameSet) return NextResponse.json({ ok: false, text: src, reason: 'rejected: the model changed a number' });
+  if (/[0-9०-९]/.test(clean) || !sameSet) {
+    return NextResponse.json({ ok: false, text: src, reason: 'rejected: the model changed a number' });
+  }
+
   const final = out.replace(/\[\[(\d+)\]\]/g, (_, i) => nums[+i]);
-  return NextResponse.json({ ok: true, text: final });
+  return NextResponse.json({ ok: true, text: final, source, confidenceScore });
 }

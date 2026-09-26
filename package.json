@@ -9,6 +9,7 @@
     "start": "next start -H 0.0.0.0",
     "test": "vitest run",
     "golden:extract": "node scripts/extract-golden.mjs",
+    "nugen:align": "node scripts/nugen-align.mjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

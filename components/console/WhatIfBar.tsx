@@ -17,7 +17,7 @@ export default function WhatIfBar() {
     try {
       const r = await fetch('/api/llm/whatif', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ q }) }).then((x) => x.json());
       if (r.ok) {
-        runWhatIfSpec(r.spec, r.label, r.say, r.source);
+        runWhatIfSpec(r.spec, r.label, r.say, r.source, r.confidenceScore);
         setQ('');
       } else toast(r.message || 'Pravaah could not turn that into a scenario.');
     } catch {
@@ -67,7 +67,19 @@ export default function WhatIfBar() {
           <div className="flex-1">
             <div className="text-[13px] font-semibold">
               {s.w.label}
-              {s.w.id === 'custom' ? <span className="ml-2 text-[10.5px] font-normal text-dimmer">{s.w.source === 'llm' ? 'question parsed by the language model · numbers by the engine' : 'question parsed by word matching · numbers by the engine'}</span> : null}
+              {s.w.id === 'custom' ? (
+                <span className="ml-2 text-[10.5px] font-normal text-dimmer">
+                  {s.w.source === 'nugen' ? (
+                    <span className="inline-flex items-center gap-1 rounded bg-[#005b96]/20 px-1.5 py-0.5 text-[#5bb4e5] border border-[#005b96]/40 font-medium">
+                      ⚡ Nugen Aligned Model{s.w.confidenceScore != null ? ` (${Math.round(s.w.confidenceScore)}% confidence)` : ''} · numbers by the engine
+                    </span>
+                  ) : s.w.source === 'llm' ? (
+                    'question parsed by the language model · numbers by the engine'
+                  ) : (
+                    'question parsed by word matching · numbers by the engine'
+                  )}
+                </span>
+              ) : null}
             </div>
             <div className="mt-0.5 text-[12px] leading-snug text-dim">{s.w.say}</div>
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12px]">

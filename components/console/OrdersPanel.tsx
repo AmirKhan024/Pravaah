@@ -25,10 +25,10 @@ export function copyText(text: string) {
 function CrowdCard({ card }: { card: OrderCard }) {
   const s = useSlice(store, (s) => ({ scn: s.scn, res: s.approved?.result, ivs: s.approved?.ivs }));
   const [lang, setLang] = useState<Lang>('mr');
-  const [polished, setPolished] = useState<Partial<Record<Lang, string>>>({});
+  const [polished, setPolished] = useState<Partial<Record<Lang, { text: string; source?: string; confidenceScore?: number | null }>>>({});
   const [busy, setBusy] = useState(false);
   const base = card.langs!.find((l) => l.lang === lang)!.text;
-  const text = polished[lang] || base;
+  const text = polished[lang]?.text || base;
   const iv = s.ivs?.find((x) => x.type === 'nudge' && x.cohort === card.cohort) as { rupees: number; delta?: number } | undefined;
   const v = s.res && card.cohort ? nudgeVars(s.scn, card.cohort, s.res, iv?.rupees || 0, iv?.delta) : null;
   const polish = async () => {
@@ -36,7 +36,7 @@ function CrowdCard({ card }: { card: OrderCard }) {
     try {
       const r = await fetch('/api/llm/polish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: base, lang }) }).then((x) => x.json());
       if (r.ok) {
-        setPolished((p) => ({ ...p, [lang]: r.text }));
+        setPolished((p) => ({ ...p, [lang]: { text: r.text, source: r.source, confidenceScore: r.confidenceScore } }));
         toast('Re-worded. Every number is still the engine’s.');
       } else toast(r.reason === 'offline' ? 'Offline: using the fixed template.' : 'Kept the template: ' + (r.reason || 'no change'));
     } finally {
@@ -56,7 +56,17 @@ function CrowdCard({ card }: { card: OrderCard }) {
         ))}
       </div>
       <div className={cx('mt-2 rounded-lg border border-line-soft bg-ink/70 px-3 py-2.5 text-[15px] leading-relaxed', lang !== 'en' && 'font-deva')}>{text}</div>
-      {polished[lang] ? <div className="mt-1 text-[10.5px] text-dimmer">re-worded by the language model · numbers locked and re-inserted from the simulation</div> : null}
+      {polished[lang] ? (
+        <div className="mt-1 text-[10.5px] text-dimmer">
+          {polished[lang]?.source === 'nugen' ? (
+            <span className="inline-flex items-center gap-1 rounded bg-[#005b96]/20 px-1.5 py-0.5 text-[#5bb4e5] border border-[#005b96]/40 font-medium">
+              ⚡ re-worded by Nugen Aligned Model{polished[lang]?.confidenceScore != null ? ` (${Math.round(polished[lang]!.confidenceScore!)}% confidence)` : ''} · numbers locked and re-inserted from simulation
+            </span>
+          ) : (
+            're-worded by the language model · numbers locked and re-inserted from the simulation'
+          )}
+        </div>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-1.5">
         <Button
           size="sm"

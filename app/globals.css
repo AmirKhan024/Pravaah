@@ -1,0 +1,191 @@
+@import 'tailwindcss';
+
+/* SOURCE_OF_TRUTH §13 — calm, serious, control-room. Brass is the only accent. Red only for danger. */
+@theme {
+  --color-ink: #101715;
+  --color-ink-deep: #0b1110;
+  --color-panel: #16201e;
+  --color-panel-2: #1b2624;
+  --color-line: #26322f;
+  --color-line-soft: #1f2a28;
+  --color-text: #dce5e1;
+  --color-dim: #7a8a85;
+  --color-dimmer: #586662;
+  --color-brass: #c9a961;
+  --color-brass-dim: #8e7742;
+  --color-brass-glow: #e8c87a;
+  --color-d0: #35555f;
+  --color-d1: #3f7a6b;
+  --color-d2: #9aa24b;
+  --color-d3: #c79338;
+  --color-d4: #cc5f2c;
+  --color-d5: #b02d1e;
+  --color-danger: #e0634f;
+  --color-danger-soft: #f0a594;
+  --color-safe: #6fb39a;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-jbmono), ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+  --font-display: var(--font-serif), Georgia, 'Times New Roman', serif;
+  --font-deva: var(--font-deva), var(--font-inter), sans-serif;
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-ink);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-dimmer);
+  font-weight: 600;
+}
+
+.hairline {
+  border-color: var(--color-line);
+}
+
+/* scrollbars that belong in a control room */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2b3835 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2b3835;
+  border-radius: 8px;
+}
+
+::selection {
+  background: rgba(201, 169, 97, 0.35);
+}
+
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 2px;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.5s var(--ease-out-quart) both;
+}
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.fadein {
+  animation: fadein 0.6s ease both;
+}
+@keyframes pulse-danger {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(224, 99, 79, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(224, 99, 79, 0.12);
+  }
+}
+.pulse-danger {
+  animation: pulse-danger 1.6s ease-in-out infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+.blink {
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+.busy-bar {
+  position: relative;
+  overflow: hidden;
+}
+.busy-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(201, 169, 97, 0.35), transparent);
+  animation: sweep 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* MapLibre: keep attribution calm */
+.maplibregl-ctrl-attrib {
+  background: rgba(11, 17, 16, 0.6) !important;
+  color: var(--color-dimmer) !important;
+  font-size: 10px !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--color-dim) !important;
+}
+.maplibregl-canvas {
+  outline: none;
+}
+
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

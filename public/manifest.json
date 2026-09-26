@@ -1,0 +1,10 @@
+{
+  "name": "Pravaah",
+  "short_name": "Pravaah",
+  "description": "You are in the crowd tonight.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101715",
+  "theme_color": "#101715",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

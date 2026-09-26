@@ -5,6 +5,72 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-27 — Venue-owner flow + registration upload: what was reused, what was overruled
+
+**Reused from `../pravaah-v2`**: the trust vocabulary and colour ladder (claimed/document-checked/
+verified), the per-row trust-pill UI idea, and the "registration → origin/mode/gate/party-size"
+concept underlying its `CrowdGroup`/contract schemas. **Rewritten, not ported**: v2's Zod-validated
+Venue/Event types, its `/api/registrations/upload` server route, and its Supabase-shaped
+persistence. **Why:** ps8 is client-only by design (§ ground rules: "no new Supabase tables or API
+routes unless something already works that way") and already has a tested, golden-adjacent seam —
+`engine/dataLoader.ts`'s `loadScenarioFromRows()` plus `lib/console.ts`'s `loadScenario()` — that
+both `/console` and `/live` read from. Building a parallel Venue/Event model and a second
+scenario-construction path would have meant two things that could disagree about what "the venue"
+is; adapting owner data into the loader's own row shapes (`GateRow`, `ParkingRow`, `ArrivalRow`)
+means there is exactly one.
+
+**Gate "people/min" is a computed, read-only figure, not a second per-gate editable field.** v2's
+`VenueGate` has an editable `laneRate` per gate; ps8's engine models lane-rate as ONE global
+constant (`Scenario.laneRate`, `VENUE_DEFAULTS.laneRate = 28`) multiplying every gate's `lanes`.
+**Why:** adding a genuine per-gate lane-rate would be a real engine schema change — a new field
+threaded through `simulate()`'s gate-capacity calculation (§6.6.3) — which SOURCE_OF_TRUTH §14.2/
+§6.10 gates behind "golden test stays green, and any deliberate engine-behaviour change must be
+explained." Not worth it for a demo slice when `lanes` alone already gives the owner a real,
+engine-connected lever. The people/min figure is still shown (lanes × 28) so the number isn't
+hidden, just not a second thing to edit.
+
+**Rows with no gate hint are distributed across the venue's real gates by lane capacity, not sent
+to "needs review."** The brief's own literal reading ("unmappable rows go to a small needs-review
+list") would, applied to a gate column, gut the demo: the shipped sample CSVs (both this
+project's `contract/samples/registrations-*.csv` from v2 and the two new messy fixtures here) have
+a "Gate Pref"/"Preferred Stand" column that is blank for most rows — real registration forms
+usually don't ask which gate someone prefers. **Why this reading:** the brief also says results
+should "map to gates via the loaded scenario," which only makes sense as an instruction to route
+gate-less people somewhere real, not to discard them. `lib/registrations/apply.ts`'s
+`allocateProportional()` (largest-remainder method, so it never loses or invents a person) is the
+mechanism. Reserved "needs review" for what actually can't be safely guessed: a missing origin
+(who are they) or a missing/invalid group size (an invented headcount is exactly the class of
+number SOURCE_OF_TRUTH §3.2 forbids) — never a missing mode or gate, both of which get a safe,
+disclosed default instead.
+
+**Entrances are a thin, display-only naming layer over gates, not a new engine concept.** v2 has a
+genuine `VenueEntrance` (a set of transport points feeding a set of gates) that its cohort-routing
+logic walks. ps8's `gates.csv` already conflates entrance-and-gate — a gate zone's own forecourt is
+its entrance. **Why not build the fuller v2 model:** it would require a second, parallel graph
+(entrances → gates) alongside the one `dataLoader.ts` already builds from `gates.csv`, purely so a
+label could say "Main entrance" instead of "Gate 1" in one more place — cost not worth it for what
+the ground rules call "one clear action per screen." The owner still gets to name entrances and
+say which gate they feed, with their own trust pill; it just isn't a second thing the simulation
+reads.
+
+**XLSX was not built.** No parser dependency exists in `package.json`, and `.xlsx` is a zip of XML
+parts — not "trivial" to hand-roll safely. The two shipped messy samples (an odd-header CSV, a
+pasted WhatsApp-style list) exercise CSV, TXT/paste and — via `lib/registrations/parse.ts`'s
+JSON-array branch — JSON, which is what the brief actually asks to cover ("CSV, XLSX (only if a
+parser dependency already exists or is trivial), TXT/JSON, and a big paste-anything box").
+
+**The fallback (no-registrations-yet) arrival split had to be redesigned mid-build, live —
+proportional-by-lanes was quietly self-cancelling.** See `docs/PROGRESS.md` for the bug itself; the
+decision worth recording here is *why* the fix is "split by gate count" rather than, say, "split by
+forecourt area" or "split evenly across an assumed number of cohorts per gate." **Why gate count:**
+it's the simplest split that is provably independent of every number the Gates table lets the owner
+edit (lanes, forecourt area) — any split that used one of those fields as a weight would risk the
+same self-cancelling trap for that field. It's explicitly a placeholder (tagged `estimated`,
+replaced wholesale the moment real registrations are uploaded), so "simple and honestly rough" beats
+"a cleverer guess that might hide a real lever's effect again."
+
+---
+
 ## 2026-09-27 — Data-driven: four choices worth explaining
 
 **Quick Start's venue step reuses the existing OSM importer rather than a fake single-gate default.**

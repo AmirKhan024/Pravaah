@@ -4,6 +4,96 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-27 — Venue-owner flow (ported from ../pravaah-v2) + AI-powered registration upload
+
+Two new slices, client-only, no new Supabase tables or API routes beyond a stateless Groq proxy:
+the venue owner's own screen for gates/parking/entrances, and a "messy file in → clean arrival
+groups out" registration upload that turns any shape of registration list into the same
+`ArrivalRow[]` the CSV loader already validates and simulates.
+
+**Changed**
+- **`engine/dataLoader.ts`** (additive): new optional `ParkingRow`/`CsvScenarioInput.parking` — a
+  self-drive arrival's origin zone uses a matched parking lot's real area instead of the hardcoded
+  2200 m² default. Existing callers (no `parking` field) are byte-for-byte unchanged; new test in
+  `dataLoader.test.ts`.
+- **`lib/owner/`** (new): `types.ts` (`OwnerVenue`/`OwnerGate`/`OwnerParking`/`OwnerEntrance`, each
+  field carrying a `claimed | document-checked | verified` trust tag — v2's ladder, this brief's
+  wording), `store.ts` (localStorage persistence, `buildCsvInput()` turning owner rows into exactly
+  the same `CsvScenarioInput` shape `/setup`'s CSV path already produces, `saveOwnerVenue()` — the
+  one seam that calls `loadScenarioFromRows()` then `lib/console.ts`'s existing `loadScenario()`,
+  so `/live` changes for real — and `buildFallbackArrivalRows()` for the empty-registrations state).
+- **`components/owner/`** (new, small per-screen pieces, not a 1000-line port): `TrustPill`,
+  `VenueBasics`, `GatesTable`, `ParkingTable`, `EntrancesTable`, `RiskReadout` (the "changing gate
+  lanes changes tonight's risk" line + status word + dangerous minutes), `OwnerVenueScreen`
+  (orchestrator). Route: `app/owner/venue`.
+- **`lib/registrations/`** (new): `parse.ts` (Step A, deterministic — CSV/JSON/paste-anything →
+  raw rows/lines, first ~20 sampled), `fuzzyMap.ts` (offline/Groq-failure fallback: header synonyms
+  + a mode/gate synonym table + a line-pattern extractor for free text), `apply.ts` (Step C,
+  deterministic — group, sum party sizes, route to gates, and `cleanGroupsToArrivalRows()` into the
+  loader's own row shape; `verifyExtractedRows()` re-checks an LLM-cited row's number really appears
+  in its quoted source line). `app/api/llm/registrations/route.ts` (Step B): Groq gets ONLY the
+  sample + schema, returns a mapping or cited rows; server-side validation rejects anything else and
+  the client falls back to fuzzy matching, labelled "offline mode" honestly.
+- **`components/registrations/`** (new): `MessyPreview`, `MappingTable`, `CleanGroupsOut`,
+  `RegistrationsScreen` (the three-step flow + paste-anything box + "Try a messy sample" ×2 +
+  before/after risk + "Use these groups"). Route: `app/owner/registrations`, linked from `/setup`
+  and Live Ops's More menu.
+- **`data/sample/messy/`**: `messy-export.csv` (odd headers, mixed-case places, blank fields) and
+  `whatsapp-list.txt` (a pasted WhatsApp-style list), served via `app/api/sample/messy/route.ts`
+  (`data/` isn't public, same pattern as the existing DY Patil sample route).
+
+**Two real bugs, both caught by driving the actual app in a browser, not by reading the diff.**
+1. The first version of `buildFallbackArrivalRows()` split the placeholder crowd proportional to
+   each gate's OWN lane count — so cutting a gate's lanes also cut its assigned crowd, and the two
+   effects cancelled: the risk readout never moved no matter what the owner changed. Fixed by
+   splitting evenly by gate COUNT instead (a fixed demand independent of the very knob being
+   tested), and tuned `spread_min` from an initial guess of 40 down to 14 minutes so the sample
+   venue reads Calm by default but a genuinely short-lanes gate visibly crosses into danger — the
+   same kind of calibration the flagship's own sample data needed (see the 2026-09-27 "Data-driven"
+   entry above). Pinned in `lib/owner/__tests__/store.test.ts`.
+2. `RegistrationsScreen`'s "before" risk pill re-read the live shared store on every render, so the
+   instant "Use these groups" mutated that store, the pill silently started showing the new
+   post-apply state (a "Calm" pill sitting next to a stale "86" dangerous-minute number that
+   actually belonged to the true before-state). Fixed by freezing `before` once, at mount
+   (`useState(() => readout(...))`), matching the already-correctly-frozen `saved.before` the Delta
+   number reads.
+- New engine test (`dataLoader.test.ts`), new `lib/owner/__tests__/store.test.ts` (pins both bugs
+  above as regressions), new `lib/registrations/__tests__/apply.test.ts` (deterministic grouping,
+  proportional gate distribution with no hint, the extracted-row number-verification check).
+
+**Overruled, logged to `docs/DECISIONS.md`**: gate "people/min" is a computed read-only figure, not
+a second editable field; rows with no gate hint are distributed across the venue's real gates by
+lane capacity rather than sent to "needs review"; entrances are a display-only naming layer, not a
+new engine concept; XLSX support was skipped (no parser dependency exists).
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 95/95 (10 new).
+- Live, via Playwright against the real dev server with a real Groq key (not `DEMO_OFFLINE`): edited
+  Gate 3's lanes down to 1 and saved — the risk readout moved from Calm/72 to **Act now/86**, and
+  `/live` (opened fresh, a real navigation) showed the same "Act now" status and the owner's own
+  venue name. Then used the "Try a messy sample (spreadsheet)" button on `/owner/registrations`:
+  Groq correctly mapped "Coming From"→origin, "How Arriving"→mode, "Preferred Stand"→gate,
+  "Total Members"→group size, and normalised "cab"→car, "train"→rail, etc.; 22 rows read, 33 clean
+  groups (70 people) out, 2 rows correctly flagged needs-review (blank origin, blank group size);
+  "Use these groups" moved the risk from Act now/86 to Calm/0 (a tiny 70-person sample against a
+  20,000-capacity venue, correctly read as calm) and `/live` picked it up immediately — confidence
+  badge moved from "medium" to **"high"** now that real registration data replaced the estimated
+  placeholder, map labels showed the owner's real gate names and registrants' real origins
+  (Vashi/Kharghar/Panvel), and the ticker's own optimiser commentary stayed honest ("Gate 2 only
+  gets 22 people. Adding lanes where nobody queues changes nothing.").
+- A genuine layout bug was also caught and fixed in the same pass: the "document-checked" trust
+  pill (the longest label in the ladder) overlapped its neighbouring input in the Gates/Parking
+  tables' cramped grid cells — Playwright's own `fill()` timed out on the obscured element before a
+  human would have noticed on a quick glance. Fixed by stacking input-then-pill vertically instead
+  of side-by-side.
+
+**Still open / honestly fake**: the safety-document check (slice 3, stretch) was not built — slices
+1 and 2 took the full budget. Entrances are informational only, not wired into the engine. XLSX
+upload is not supported. The offline (no-Groq) free-text extraction fallback is deliberately cruder
+than Groq's own (one group per line, no city-name merging) and says so in the UI.
+
+---
+
 ## 2026-09-27 — Data-driven: an event head's own data, from /setup to /live
 
 Judges said `/live` looked hardcoded and dummy. Fixed the actual cause, not the appearance: the

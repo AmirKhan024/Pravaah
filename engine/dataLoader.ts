@@ -84,6 +84,17 @@ export interface ResourceRow {
   status: string;
   source_note: string;
 }
+/** Owner-entered parking lots (added for the venue-owner flow). Optional and additive: a
+ * self-drive arrival group's origin zone only uses a lot's real area when its name matches one of
+ * these rows (see `findParking` below); with no rows at all, behaviour is byte-for-byte unchanged
+ * from before this type existed. */
+export interface ParkingRow {
+  name: string;
+  capacity_vehicles: string;
+  area_m2: string;
+  status: string;
+  source_note: string;
+}
 
 export interface CsvScenarioInput {
   event: EventRow[];
@@ -92,6 +103,7 @@ export interface CsvScenarioInput {
   arrivals: ArrivalRow[];
   hotels: HotelRow[];
   resources: ResourceRow[];
+  parking?: ParkingRow[];
 }
 
 export interface DataField {
@@ -233,7 +245,23 @@ function fields(input: CsvScenarioInput): DataField[] {
   input.arrivals.forEach((r) => push('arrivals.csv', r.group, r.status, r.source_note));
   input.hotels.forEach((r) => push('hotels.csv', r.name || r.cluster, r.status, r.source_note));
   input.resources.forEach((r) => push('resources.csv', r.resource, r.status, r.source_note));
+  (input.parking ?? []).forEach((r) => push('parking.csv', r.name, r.status, r.source_note));
   return out;
+}
+
+/** Matches a self-drive arrival's free-text origin against an owner-entered parking lot by name
+ * (same loose contains-either-way match `findCluster` uses for hotels, just against `parking`
+ * instead). Returns undefined when no `parking` rows were given or none match — callers fall back
+ * to the pre-existing default area. */
+function findParking(parking: ParkingRow[] | undefined, origin: string): ParkingRow | undefined {
+  if (!parking?.length) return undefined;
+  const o = origin.trim().toLowerCase();
+  for (const p of parking) {
+    const n = p.name.trim().toLowerCase();
+    if (!n) continue;
+    if (o === n || o.includes(n) || n.includes(o)) return p;
+  }
+  return undefined;
 }
 
 /** default free-flow minutes for a mode with no distance data — documented estimates, tagged in the field list */
@@ -369,6 +397,7 @@ export function loadScenarioFromRows(input: CsvScenarioInput, opts: LoadOpts = {
     const mode = a.mode.trim().toLowerCase();
     const cluster = findCluster(a.origin);
     const originType: Zone['type'] = cluster ? 'hotel' : mode === 'car' ? 'parking' : 'transit';
+    const parkingLot = originType === 'parking' ? findParking(input.parking, a.origin) : undefined;
     const originBrg = ((SIDE_DEG[input.gates.find((g) => g.gate_id === a.ticket_gate)?.side?.trim().toLowerCase() ?? ''] ?? 0) * Math.PI) / 180;
     const originDistM = cluster ? cluster.distanceKm * 1000 : 1500;
     const originPos = offset(C, originBrg, 250 + D.plazaOffsetM + originDistM);
@@ -381,7 +410,7 @@ export function loadScenarioFromRows(input: CsvScenarioInput, opts: LoadOpts = {
       type: originType,
       lat: originPos.lat,
       lng: originPos.lng,
-      ...(originType === 'hotel' ? { rooms: cluster!.rooms, occupied: cluster!.occupied, price: Math.round(cluster!.price) } : { areaM2: 2200 }),
+      ...(originType === 'hotel' ? { rooms: cluster!.rooms, occupied: cluster!.occupied, price: Math.round(cluster!.price) } : { areaM2: (parkingLot && num(parkingLot.area_m2)) ?? 2200 }),
       estimated: true,
     });
     const originLink = addLink(

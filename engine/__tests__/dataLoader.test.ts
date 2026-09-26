@@ -128,4 +128,25 @@ describe('CSV loader — sample DY Patil event', () => {
     const totalAt = (r: typeof t1) => (r.ok ? r.data.scenario.cohorts.reduce((a, c) => a + c.size, 0) : 0);
     expect(totalAt(t90)).toBeLessThan(totalAt(t1));
   });
+
+  it('an owner-entered parking lot (additive, optional) sizes the matching self-drive origin zone', () => {
+    // no `parking` rows at all: unchanged from before this field existed
+    const before = loadScenarioFromRows(sampleInput());
+    if (!before.ok) throw new Error('load failed');
+    const beforeZone = before.data.scenario.zones.find((z) => z.type === 'parking')!;
+    expect(beforeZone.areaM2).toBe(2200);
+
+    const withParking = loadScenarioFromRows({
+      ...sampleInput(),
+      parking: [{ name: 'Sector 20 parking', capacity_vehicles: '1800', area_m2: '9000', status: 'verified', source_note: 'owner-measured' }],
+    });
+    if (!withParking.ok) throw new Error('load failed');
+    const afterZone = withParking.data.scenario.zones.find((z) => z.type === 'parking')!;
+    expect(afterZone.areaM2).toBe(9000);
+    expect(withParking.data.fields.some((f) => f.file === 'parking.csv' && f.row === 'Sector 20 parking')).toBe(true);
+
+    // a bigger, real parking area eases (or leaves unchanged) the crush there — never worse
+    checkGraph(withParking.data.scenario);
+    expect(simulate(withParking.data.scenario).crushMin).toBeLessThanOrEqual(simulate(before.data.scenario).crushMin);
+  });
 });

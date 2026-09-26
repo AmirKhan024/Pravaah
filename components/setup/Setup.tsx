@@ -58,7 +58,8 @@ function downloadTemplate(name: string) {
   URL.revokeObjectURL(url);
 }
 
-const ROLE_MATCH: Record<keyof CsvScenarioInput, RegExp> = {
+type FileRole = Exclude<keyof CsvScenarioInput, 'parking'>;
+const ROLE_MATCH: Record<FileRole, RegExp> = {
   event: /event/i,
   gates: /gate/i,
   tickets: /ticket/i,
@@ -68,14 +69,14 @@ const ROLE_MATCH: Record<keyof CsvScenarioInput, RegExp> = {
 };
 
 async function filesToInput(files: FileList): Promise<{ input?: CsvScenarioInput; errors: string[] }> {
-  const byRole: Partial<Record<keyof CsvScenarioInput, File>> = {};
+  const byRole: Partial<Record<FileRole, File>> = {};
   for (const f of Array.from(files)) {
-    const role = (Object.keys(ROLE_MATCH) as (keyof CsvScenarioInput)[]).find((r) => ROLE_MATCH[r].test(f.name));
+    const role = (Object.keys(ROLE_MATCH) as FileRole[]).find((r) => ROLE_MATCH[r].test(f.name));
     if (role && !byRole[role]) byRole[role] = f;
   }
-  const missing = (Object.keys(ROLE_MATCH) as (keyof CsvScenarioInput)[]).filter((r) => !byRole[r]);
+  const missing = (Object.keys(ROLE_MATCH) as FileRole[]).filter((r) => !byRole[r]);
   if (missing.length) return { errors: missing.map((r) => `No file matched "${r}" — expected a file named like ${r}.csv.`) };
-  const text = await Promise.all((Object.keys(ROLE_MATCH) as (keyof CsvScenarioInput)[]).map((r) => byRole[r]!.text()));
+  const text = await Promise.all((Object.keys(ROLE_MATCH) as FileRole[]).map((r) => byRole[r]!.text()));
   const [event, gates, tickets, arrivals, hotels, resources] = text.map((t) => parseCsv(t));
   return {
     input: {
@@ -209,7 +210,10 @@ export default function Setup() {
         <div className="flex items-center gap-2.5 text-brass">
           <Logo className="size-6" />
           <span className="text-[13px] font-semibold tracking-[0.2em] text-text">PRAVAAH</span>
-          <span className="ml-auto text-[12px] text-dimmer">
+          <span className="ml-auto flex gap-3 text-[12px] text-dimmer">
+            <Link href="/owner/venue" className="hover:text-text">
+              Venue owner? →
+            </Link>
             <Link href="/live" className="hover:text-text">
               Skip to Live Ops (flagship demo) →
             </Link>
@@ -303,6 +307,14 @@ export default function Setup() {
           <Button className="mt-3" disabled={!!busy} onClick={() => fileInput.current?.click()}>
             {busy ?? 'Choose 6 CSV files →'}
           </Button>
+        </Card>
+
+        <Card>
+          <Kicker right={<span>Step 3</span>}>Venue owner? Upload a messy registration list</Kicker>
+          <p className="text-[13px] text-dim">Any shape — a spreadsheet export, a pasted WhatsApp list, free text. Pravaah maps it to your gates and re-runs the evening.</p>
+          <Link href="/owner/registrations" className="mt-3 inline-block rounded-lg border border-line bg-panel-2/60 px-4 py-2 text-[13.5px] text-text hover:border-brass-dim hover:bg-panel-2">
+            Upload registrations →
+          </Link>
         </Card>
 
         <p className={cx('text-center text-[11.5px] text-dimmer')}>PS-8 · uploaded data stays in your browser and is never sent to a server.</p>

@@ -24,6 +24,8 @@ const ITEMS: { label: string; sub: string; drawer?: Drawer; href?: string; actio
 
 const LINKS: { label: string; sub: string; href: string }[] = [
   { label: 'Give it your event', sub: 'Quick start, sample data, or your own CSVs', href: '/setup' },
+  { label: 'Your venue (owner)', sub: 'Gates, parking, entrances — with trust badges', href: '/owner/venue' },
+  { label: 'Registrations (owner)', sub: 'Upload a messy file, Pravaah maps it to gates', href: '/owner/registrations' },
   { label: 'Any venue in 60 seconds', sub: 'Import roads, gates and stations', href: '/venues' },
   { label: 'Replay a run', sub: 'Scrub back through a past evening', href: '/replay' },
   { label: 'Full console', sub: 'The guided, five-step walkthrough', href: '/console' },

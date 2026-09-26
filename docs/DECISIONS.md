@@ -5,6 +5,31 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-26 — Cover page: reuse FlowMap, superseding the earlier "schematic, not a second map" call
+
+**Decision:** reversed. `components/cover/CoverFlow.tsx` now renders through the actual `FlowMap`
+component (real MapLibre tiles, teardrop pins, hover tooltips, zoom/compass/legend/context pill —
+everything built for Phase 4) instead of its own bespoke canvas-drawn schematic. It still runs its
+own lightweight `simulate(dyPatil, [], { waits })` and its own tick loop (no `lib/console.ts`
+store/boot needed for a decorative marketing panel) and feeds that into `FlowMap`'s `getState()`
+with `ghost: null, raviCur: null` (this panel never shows a plan or Ravi).
+
+**Why the reversal:** the earlier entry argued the mockup's illustrated city is fictional geometry
+that would either fake DY Patil's real layout or duplicate a large rendering engine for a ~500px
+decorative panel. That reasoning held only as long as CoverFlow needed its *own* renderer. Once
+`FlowMap` existed (Phase 4) with real re-tinted MapLibre geodata already solving exactly that
+problem, reusing it costs nothing extra and gives the cover page the identical illustrated map
+instead of a resemblance to it — which is what was actually being asked for, confirmed directly
+against a screenshot of `reference/ui-mockup.html`'s own map next to the schematic version.
+
+**Trade-off accepted:** the cover panel now depends on MapLibre/network tiles loading (same as the
+console), where the schematic version needed nothing but the simulation. This matches the
+console's own behavior already, and `FlowMap` already degrades to a flat offline background under
+`NEXT_PUBLIC_DEMO_OFFLINE=1`, so this doesn't introduce a new failure mode, just extends an
+existing one to one more route.
+
+---
+
 ## 2026-09-26 — Phase 4: the console map — real MapLibre re-tinted, not a hand-drawn copy of the mockup
 
 **Decision:** `FlowMap.tsx` keeps MapLibre and the real DY Patil coordinates exactly as before;

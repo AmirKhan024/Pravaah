@@ -4,6 +4,32 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-26 — Cover page: reuse FlowMap instead of the bespoke schematic renderer
+
+**Changed**
+- `components/cover/CoverFlow.tsx` rewritten (~190 lines → ~65): drops the hand-drawn canvas
+  renderer entirely and renders `<FlowMap>` instead, feeding it the panel's own lightweight
+  `simulate()` result and a local tick loop through `getState()` (`ghost: null`, `raviCur: null` —
+  this panel never has a plan or Ravi). The "if nobody acts… simulated in X ms" performance line
+  is kept as a small overlay caption.
+- No change to `FlowMap.tsx` itself — this is purely a caller-side swap, confirming the component
+  built in Phase 4 is reusable as-is for a third context (cover page, alongside console/Live Ops).
+
+**Why:** side-by-side against a screenshot of `reference/ui-mockup.html`'s own map, the schematic
+version didn't read as "the same map" even after Phase 1's cover-page pass gave it pins and
+theming — it's a flow diagram, not a map. `FlowMap` already solves real-tiles-plus-illustrated-
+palette; reusing it was cheaper and more honest than building a second approximation.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 52/52. `git diff --stat -- engine worker`: no changes.
+- Playwright screenshots of `/` in both themes: real MapLibre geodata (roads/buildings/water)
+  renders in the cover panel with teardrop pins, context pill, clock chip, zoom/compass, and
+  legend — matching the console map's own look; Night reproduces the original dark palette; no
+  console errors (only benign WebGL driver perf warnings, unrelated to this change, also present
+  in the console map before this).
+
+---
+
 ## 2026-09-26 — Simple-UI migration, Phase 4: the console map (FlowMap.tsx)
 
 **Changed**

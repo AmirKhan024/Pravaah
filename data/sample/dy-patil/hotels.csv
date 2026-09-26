@@ -1,0 +1,21 @@
+cluster,name,rooms_total,rooms_booked,distance_km,price_inr,coach_available,status,source_note
+Vashi,Four Points by Sheraton Navi Mumbai; Vashi,252,239,7.5,9000,true,estimated,hotel name/location real (marriott.com); room count and price are typical-property estimates; not verified for this date
+Vashi,Vivanta Navi Mumbai Turbhe,165,157,9.0,11000,true,estimated,name real (hotels.com listing); room count/price estimated
+Vashi,Navi Mumbai Marriott Hotel,393,373,8.0,12500,true,estimated,name real; room count is a commonly cited figure but not verified here
+Vashi,Courtyard By Marriott Navi Mumbai,154,146,8.0,7500,true,estimated,name real; room count/price estimated
+Vashi,ibis Navi Mumbai Hotel,138,131,8.0,5500,false,estimated,name real; room count/price estimated
+Vashi,Other Vashi hotels (aggregate),1298,1234,8.5,4000,false,invented,invented aggregate to bring Vashi cluster to 2400 rooms; cluster guests/room = 4440/2280 = 1.95; within the 3.0 cap
+Belapur,The Park Navi Mumbai,92,89,6.5,7000,true,estimated,name real (hotels.com listing); room count/price estimated
+Belapur,Hotel Grande 51,40,39,7.0,3500,false,estimated,name/location real (explurger.com listing); room count/price estimated
+Belapur,Hotel CBD,20,19,7.5,1800,false,estimated,name/address real (travelocity.com listing); room count/price estimated
+Belapur,Hotel Heritage Dakshin,30,29,7.0,4900,false,estimated,name real (hotels.com listing); room count/price estimated
+Belapur,Setrac Orange,45,44,7.5,4000,true,estimated,name real (hotels.com listing); room count/price estimated
+Belapur,Other Belapur hotels (aggregate),1573,1526,7.5,3500,false,invented,invented aggregate to bring Belapur cluster to 1800 rooms; cluster guests/room = 2664/1746 = 1.53; within the 3.0 cap
+Kharghar,Royal Tulip Navi Mumbai,97,54,8.3,7000,true,real,room count (97) and distance to DY Patil Stadium (8.3 km) sourced from sembo.com listing; price/occupancy invented
+Kharghar,Fortune Select Exotica; Navi Mumbai,98,55,5.2,9000,true,estimated,distance to DY Patil Stadium (5.2 km) sourced from kayak.com listing -- this is the single closest hotel in any cluster, closer than every named Belapur hotel; room count/price estimated
+Kharghar,Hotel Spencer - Kharghar,30,17,6.0,2500,false,estimated,name real (expedia.com Panvel-area hotel list); distance revised from a prior 13 km guess to 6 km to match the cluster's real Fortune Select data point; price estimated
+Kharghar,Other Kharghar hotels (aggregate),1875,1087,6.5,3000,false,invented,"invented aggregate; booked rooms raised from a prior 1050 to 1087 (occupancy 58%) so cluster guests/room stays at the 3.0 cap: 3637/1213 = 3.00. Distance revised from a prior 12 km guess to 6.5 km -- see distance note below tables"
+Panvel,Hotel Sarovar Grand,80,32,16.0,6000,true,estimated,name real (expedia.com Panvel hotel list); room count/price/distance estimated
+Panvel,Hotel Express INN; Panvel,45,18,15.0,3000,false,estimated,name real (expedia.com Panvel hotel list); room count/price/distance estimated
+Panvel,Pallavi aVIDA,60,24,17.0,5500,true,estimated,name real (expedia.com Panvel hotel list); room count/price/distance estimated
+Panvel,Other Panvel hotels (aggregate),1415,566,16.0,3200,false,invented,invented aggregate to bring Panvel cluster to 1600 rooms; cluster guests/room = 1558/640 = 2.43; within the 3.0 cap

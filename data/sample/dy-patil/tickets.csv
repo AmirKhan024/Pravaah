@@ -1,0 +1,31 @@
+snapshot_label,snapshot_date,stand,gate_id,category,tickets_sold,days_before_match,alt_gates,status,source_note
+T-90,2026-09-26,West Lower,G3,General,4025,90,G2;G1,invented,stand capacity 11500 (largest single stand); alt_gates is an invented concourse-adjacency guess -- see gates.csv note
+T-90,2026-09-26,West Upper,G3,General,2275,90,G2;G1,invented,stand capacity 6500; alt_gates invented concourse guess
+T-90,2026-09-26,North Stand,G1,General,1960,90,G3;G5,invented,stand capacity 9800; alt_gates invented concourse guess
+T-90,2026-09-26,South Stand,G2,Premium,1110,90,G4;G3,invented,stand capacity 7400; alt_gates invented concourse guess
+T-90,2026-09-26,East Stand,G5,General,650,90,G1;G4,invented,stand capacity 6500; alt_gates invented concourse guess
+T-90,2026-09-26,Pavilion / Corporate Boxes,G4,Corporate,825,90,G5;G2,invented,stand capacity 3300; alt_gates invented concourse guess
+T-60,2026-10-26,West Lower,G3,General,6900,60,G2;G1,invented,
+T-60,2026-10-26,West Upper,G3,General,3900,60,G2;G1,invented,
+T-60,2026-10-26,North Stand,G1,General,3920,60,G3;G5,invented,
+T-60,2026-10-26,South Stand,G2,Premium,2590,60,G4;G3,invented,
+T-60,2026-10-26,East Stand,G5,General,1625,60,G1;G4,invented,
+T-60,2026-10-26,Pavilion / Corporate Boxes,G4,Corporate,1485,60,G5;G2,invented,
+T-30,2026-11-25,West Lower,G3,General,9200,30,G2;G1,invented,
+T-30,2026-11-25,West Upper,G3,General,5200,30,G2;G1,invented,
+T-30,2026-11-25,North Stand,G1,General,6370,30,G3;G5,invented,
+T-30,2026-11-25,South Stand,G2,Premium,4440,30,G4;G3,invented,
+T-30,2026-11-25,East Stand,G5,General,3250,30,G1;G4,invented,
+T-30,2026-11-25,Pavilion / Corporate Boxes,G4,Corporate,2310,30,G5;G2,invented,
+T-7,2026-12-18,West Lower,G3,General,10810,7,G2;G1,invented,
+T-7,2026-12-18,West Upper,G3,General,6110,7,G2;G1,invented,
+T-7,2026-12-18,North Stand,G1,General,8624,7,G3;G5,invented,
+T-7,2026-12-18,South Stand,G2,Premium,6290,7,G4;G3,invented,
+T-7,2026-12-18,East Stand,G5,General,5200,7,G1;G4,invented,
+T-7,2026-12-18,Pavilion / Corporate Boxes,G4,Corporate,2970,7,G5;G2,invented,
+T-1,2026-12-24,West Lower,G3,General,11385,1,G2;G1,invented,stand near-sellout (99%) -- fastest-selling stand per brief
+T-1,2026-12-24,West Upper,G3,General,6435,1,G2;G1,invented,stand near-sellout (99%)
+T-1,2026-12-24,North Stand,G1,General,9506,1,G3;G5,invented,stand at 97% sold
+T-1,2026-12-24,South Stand,G2,Premium,7104,1,G4;G3,invented,stand at 96% sold
+T-1,2026-12-24,East Stand,G5,General,6045,1,G1;G4,invented,stand at 93% sold -- slowest-selling stand
+T-1,2026-12-24,Pavilion / Corporate Boxes,G4,Corporate,3234,1,G5;G2,invented,stand at 98% sold

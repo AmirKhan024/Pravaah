@@ -1,0 +1,11 @@
+group,size,share_pct,mode,origin,preferred_gate,ticket_gate,mean_arrival_time,spread_min,pulse_period_min,status,source_note
+Nerul rail,13253,30.32,rail,Nerul station,G3,G3,18:40,25,6,invented,pulse interval per brief (train-sized bursts ~6 min apart); size scaled so Gate 3's arrivals equal its T-1 tickets
+Seawoods rail,4321,9.89,rail,Seawoods-Darave station,G1,G1,18:35,30,6,invented,pulse interval per brief; size scaled to Gate 1's T-1 tickets
+Palm Beach cabs,4567,10.45,cab,Palm Beach Road drop-off,G3,G3,18:50,20,,invented,size scaled so Gate 3's arrivals equal its T-1 tickets
+Self-drive,5185,11.86,car,Sector 20 parking,G1,G1,17:45,55,,invented,size scaled to Gate 1's T-1 tickets
+Vashi hotel guests,4440,10.16,shuttle,Vashi,G2,G2,18:00,45,,invented,size scaled to Gate 2's T-1 tickets; feeds hotels.csv Vashi cluster guest count
+Belapur hotel guests,2664,6.10,shuttle,CBD Belapur,G2,G2,18:05,45,,invented,size scaled to Gate 2's T-1 tickets; feeds hotels.csv Belapur cluster guest count
+Kharghar hotel guests,3637,8.32,coach,Kharghar,G5,G5,17:50,55,,invented,size scaled to Gate 5's T-1 tickets; feeds hotels.csv Kharghar cluster guest count
+Panvel hotel guests,1558,3.56,coach,Panvel,G5,G5,17:45,60,,invented,size scaled to Gate 5's T-1 tickets; feeds hotels.csv Panvel cluster guest count
+Late bookers,850,1.94,mixed (cab/shuttle),no stadium-area hotel room,G5,G5,18:15,50,,invented,size scaled to Gate 5's T-1 tickets; roughly matches brief's ~900 late-booker figure
+VIP/corporate,3234,7.40,car/shuttle,team hotels / corporate offices,G4,G4,18:55,20,,invented,"modeled with a rail/cab-style tight arrival window (close to kickoff; brief only specified timing rules for rail/cab and self-drive/hotel groups, so this is an inference); size equals Gate 4's T-1 tickets exactly since it is the gate's only group"

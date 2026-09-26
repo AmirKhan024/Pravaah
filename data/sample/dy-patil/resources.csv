@@ -1,0 +1,8 @@
+resource,quantity,cost_inr,unit,notes,status,source_note
+Gate staff (stewards/ushers),180,800,person-shift,~1 steward per 250 spectators; standard large-event ratio,estimated,ratio-based estimate applied to revised 45000 capacity; no DY Patil-specific staffing plan found online
+Additional screening lanes (proposed),6,150000,lane,proposed extra walk-through metal detectors + barriers at Gate 3 to relieve overload,invented,quantity reduced from a prior 8 to 6 -- see arrivals/gates analysis below tables; Gate 3 is the tightest gate but not clearly over its modeled capacity
+Coaches (hotel-to-stadium),25,18000,coach (round trip),45-seat coaches for Kharghar/Panvel guests and late bookers,invented,quantity reduced to match the smaller Kharghar+Panvel+late-booker arrival total (6045) in the revised arrivals.csv
+Shuttle buses (hotel-to-stadium),37,12000,bus per day,serves Vashi/Belapur/Kharghar/Panvel hotel clusters,invented,quantity reduced to match revised hotel-guest totals (12299 across all 4 clusters)
+Food stalls,98,25000,stall,~1 stall per 460 spectators; typical F&B ratio for large events,estimated,ratio-based estimate applied to revised 45000 capacity; not DY Patil-specific
+Police personnel,290,500,personnel per day (allowance),typical deployment scale reported for large Mumbai-area sporting events,estimated,ratio-based estimate applied to revised 45000 capacity; not an official figure for this fixture
+Medical teams (ambulance + first-aid post),20,15000,team per day,~1 team per 2200 spectators; standard large-event medical guideline,estimated,ratio-based estimate applied to revised 45000 capacity; no DY Patil-specific medical plan found online

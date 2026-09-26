@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { join, markSeen, phoneView, reset, roomExists, setBroadcast, setOutcome, snapshot, vote } from '@/lib/roomServer';
+import { join, markSeen, phoneView, reset, roomExists, setBroadcast, setOutcome, setPlan, snapshot, vote } from '@/lib/roomServer';
 import type { Lang } from '@/engine';
 import { parseGroupResponse, parseResponse } from '@/lib/roomResponses';
-import type { RoomBroadcast, RoomOutcome } from '@/lib/roomTypes';
+import type { PlanSnapshot, RoomBroadcast, RoomOutcome } from '@/lib/roomTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +59,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       case 'outcome': {
         if (!(await roomExists(id))) return NextResponse.json({ ok: false, error: 'no such room' }, { status: 404 });
         await setOutcome(id, b.outcome as RoomOutcome);
+        return NextResponse.json(await snapshot(id));
+      }
+      case 'plan': {
+        const plan = b.plan as PlanSnapshot;
+        if (!plan || typeof plan.approvedAt !== 'number') return NextResponse.json({ ok: false }, { status: 400 });
+        if (!(await roomExists(id))) return NextResponse.json({ ok: false, error: 'no such room' }, { status: 404 });
+        await setPlan(id, plan);
         return NextResponse.json(await snapshot(id));
       }
       case 'reset': {

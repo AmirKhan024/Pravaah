@@ -8,7 +8,7 @@ import 'server-only';
 import type { Lang } from '@/engine';
 import { classifyServerResponse, deriveChoice, type ResponseKind } from './roomResponses';
 import { seededGroupSize } from './seededGroup';
-import type { GroupResponse, Participant, PhoneView, RoomBroadcast, RoomCohort, RoomOutcome, RoomSnapshot, Vote } from './roomTypes';
+import type { GroupResponse, Participant, PhoneView, PlanSnapshot, RoomBroadcast, RoomCohort, RoomOutcome, RoomSnapshot, Vote, VisitOrigin } from './roomTypes';
 
 interface Room {
   id: string;
@@ -18,6 +18,10 @@ interface Room {
   votes: Map<string, Vote>;
   broadcast: RoomBroadcast | null;
   outcome: RoomOutcome | null;
+  t0Min: number;
+  origins: VisitOrigin[];
+  baseGateWaitPeak: Record<string, number>;
+  plan: PlanSnapshot | null;
 }
 
 const g = globalThis as unknown as { __pravaahRooms?: Map<string, Room> };
@@ -29,11 +33,11 @@ function newId() {
   return w + '-' + Math.floor(100 + Math.random() * 900);
 }
 
-export async function createRoom(cohorts: RoomCohort[], _scenarioId: string): Promise<{ id: string }> {
+export async function createRoom(cohorts: RoomCohort[], _scenarioId: string, t0Min = 0, origins: VisitOrigin[] = [], baseGateWaitPeak: Record<string, number> = {}): Promise<{ id: string }> {
   void _scenarioId; // kept for signature parity with the Supabase backend; the in-memory Room never tracked it
   let id = newId();
   while (rooms.has(id)) id = newId();
-  rooms.set(id, { id, createdAt: Date.now(), cohorts, participants: new Map(), votes: new Map(), broadcast: null, outcome: null });
+  rooms.set(id, { id, createdAt: Date.now(), cohorts, participants: new Map(), votes: new Map(), broadcast: null, outcome: null, t0Min, origins, baseGateWaitPeak, plan: null });
   if (rooms.size > 30) rooms.delete(rooms.keys().next().value!);
   return { id };
 }
@@ -114,6 +118,11 @@ export async function setOutcome(id: string, o: RoomOutcome): Promise<void> {
   if (r) r.outcome = o;
 }
 
+export async function setPlan(id: string, plan: PlanSnapshot): Promise<void> {
+  const r = rooms.get(id.toUpperCase());
+  if (r) r.plan = plan;
+}
+
 export async function reset(id: string): Promise<void> {
   const r = rooms.get(id.toUpperCase());
   if (!r) return;
@@ -125,7 +134,19 @@ export async function reset(id: string): Promise<void> {
 export async function snapshot(id: string): Promise<RoomSnapshot | null> {
   const r = rooms.get(id.toUpperCase());
   if (!r) return null;
-  return { id: r.id, cohorts: r.cohorts, participants: [...r.participants.values()], votes: Object.fromEntries(r.votes), broadcast: r.broadcast, outcome: r.outcome, now: Date.now() };
+  return {
+    id: r.id,
+    cohorts: r.cohorts,
+    participants: [...r.participants.values()],
+    votes: Object.fromEntries(r.votes),
+    broadcast: r.broadcast,
+    outcome: r.outcome,
+    t0Min: r.t0Min,
+    origins: r.origins,
+    baseGateWaitPeak: r.baseGateWaitPeak,
+    plan: r.plan,
+    now: Date.now(),
+  };
 }
 
 export async function phoneView(id: string, pid: string): Promise<PhoneView> {

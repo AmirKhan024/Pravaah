@@ -5,19 +5,20 @@
  */
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { clockFor, comma, mulberry32, personPath, RAVI, simulate, tracePerson, type Lang, type Scenario, type SimResult } from '@/engine';
-import { approve, log, store as consoleStore, toast } from './console';
+import { approve, log, store as consoleStore, type ConsoleState, toast } from './console';
 import { createStore } from './createStore';
-import { crowdMessage, devaDigits, nudgeVars } from './messages';
+import { crowdMessage, devaDigits, gateOfPath, nudgeVars, zoneName } from './messages';
 import { deriveRoomCohortProfile } from './roomProfiles';
 import { blendWeight, classifyServerResponse, COMPLIANCE_WEIGHT, deriveChoice, type GroupResponse, type ResponseKind } from './roomResponses';
 import { observedAcceptance, responseBreakdown, sumResponseCounts } from './roomVotes';
 import { seededGroupSize } from './seededGroup';
 import { supabaseBrowser } from './supabase';
-import type { RoomCohort, RoomMessage, RoomOutcome, RoomSnapshot } from './roomTypes';
+import type { PlanSnapshot, RoomCohort, RoomMessage, RoomOutcome, RoomSnapshot, VisitOrigin } from './roomTypes';
 
 export interface RoomState {
   id: string | null;
   url: string;
+  visitUrl: string;
   open: boolean;
   snap: RoomSnapshot | null;
   offline: boolean;
@@ -25,7 +26,7 @@ export interface RoomState {
   running: boolean;
 }
 
-export const roomStore = createStore<RoomState>({ id: null, url: '', open: false, snap: null, offline: false, result: null, running: false });
+export const roomStore = createStore<RoomState>({ id: null, url: '', visitUrl: '', open: false, snap: null, offline: false, result: null, running: false });
 const get = roomStore.getState;
 const set = roomStore.setState;
 
@@ -38,6 +39,43 @@ const BLURB: Record<string, string> = {
 
 export function roomCohorts(scn: Scenario): RoomCohort[] {
   return scn.cohorts.filter((c) => c.alt).map((c) => ({ id: c.id, label: c.label, size: c.size, blurb: BLURB[c.id] || c.label.toLowerCase(), ...deriveRoomCohortProfile(scn, c) }));
+}
+
+/** one plain-language food-or-stay tip, computed once from whatever run is current when the room
+ *  opens (SOURCE_OF_TRUTH §13: idea first, number second) — not re-computed on every plan update,
+ *  since it's secondary card content, not the thing "Do it" is meant to change (see docs/DECISIONS.md). */
+function originTip(scn: Scenario, res: SimResult, gateId: string, isHotel: boolean): string {
+  if (isHotel) return 'Leave with your coach — they tend to fill up before the show starts.';
+  const plazaId = scn.links.find((l) => l.gate === gateId)?.from;
+  const food = scn.zones.find((z) => z.type === 'food' && z.near === plazaId) || scn.zones.find((z) => z.type === 'food');
+  if (!food) return 'No food stalls mapped near your gate yet.';
+  const wait = res.foodWaitPeak[food.id] ?? 0;
+  return wait > 5 ? `${food.name} gets busy — expect about ${Math.round(wait)} min in line.` : `${food.name} nearby usually has a short line.`;
+}
+
+/** /visit's "coming from" list — every cohort (not just the Room's own alt-having ones, since a
+ *  visitor's real station/area/hotel should always be pickable, whether or not it's ever nudged). */
+export function visitOrigins(scn: Scenario, res: SimResult): VisitOrigin[] {
+  return scn.cohorts.map((c) => {
+    const profile = deriveRoomCohortProfile(scn, c);
+    const mainGateId = gateOfPath(scn, c.path) || '';
+    const altGateId = c.alt ? gateOfPath(scn, c.alt) || null : null;
+    const originZoneId = scn.links.find((l) => l.id === c.path[0])?.from;
+    const isHotel = scn.zones.find((z) => z.id === originZoneId)?.type === 'hotel';
+    return {
+      id: c.id,
+      label: c.label,
+      originLabel: profile.originLabel,
+      transportMode: profile.transportMode,
+      meanTick: c.mean,
+      mainGateId,
+      mainGateName: zoneName(scn, mainGateId),
+      altGateId,
+      altGateName: altGateId ? zoneName(scn, altGateId) : null,
+      isHotel,
+      tip: originTip(scn, res, mainGateId, isHotel),
+    };
+  });
 }
 
 let poll: ReturnType<typeof setInterval> | undefined;
@@ -85,22 +123,37 @@ export async function openRoom() {
     set({ open: true });
     return;
   }
-  const scn = consoleStore.getState().scn;
+  const s = consoleStore.getState();
+  const scn = s.scn;
   const cohorts = roomCohorts(scn);
+  const baseRes = s.approved?.result || s.base;
+  const origins = visitOrigins(scn, baseRes);
+  const baseGateWaitPeak = s.base.gateWaitPeak;
   try {
-    const r = await fetch('/api/room', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cohorts, scenarioId: scn.id || 'unknown' }) }).then((x) => x.json());
+    const r = await fetch('/api/room', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ cohorts, scenarioId: scn.id || 'unknown', t0Min: scn.t0Min, origins, baseGateWaitPeak }),
+    }).then((x) => x.json());
     if (!r.id) throw new Error(r.error || 'createRoom failed');
     let origin = window.location.origin;
     if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)) {
       const net = await fetch('/api/net').then((x) => x.json()).catch(() => ({ ips: [] }));
       if (net.ips?.[0]) origin = `${window.location.protocol}//${net.ips[0]}:${window.location.port || '3000'}`;
     }
-    set({ id: r.id, url: `${origin}/join/${r.id}`, open: true, offline: false });
+    set({ id: r.id, url: `${origin}/join/${r.id}`, visitUrl: `${origin}/visit/${r.id}`, open: true, offline: false });
     subscribeRealtime(r.id);
     refresh();
   } catch {
     // no server: the room still works as a simulation on this machine
-    set({ id: 'LOCAL', url: '', open: true, offline: true, snap: { id: 'LOCAL', cohorts, participants: [], votes: {}, broadcast: null, outcome: null, now: Date.now() } });
+    set({
+      id: 'LOCAL',
+      url: '',
+      visitUrl: '',
+      open: true,
+      offline: true,
+      snap: { id: 'LOCAL', cohorts, participants: [], votes: {}, broadcast: null, outcome: null, t0Min: scn.t0Min, origins, baseGateWaitPeak, plan: null, now: Date.now() },
+    });
     toast('No network. The room runs as a simulation on this machine.');
   }
 }
@@ -343,4 +396,34 @@ export async function resetRoomVotes() {
   set({ result: null });
   if (get().offline) set((st) => ({ snap: st.snap ? { ...st.snap, broadcast: null, votes: {}, outcome: null } : null }));
   else await post('reset', {});
+}
+
+/**
+ * /visit's "Do it" moment (SOURCE_OF_TRUTH-adjacent build brief): whenever the head approves or
+ * updates a plan — the exact same `approve()`/`approveReplacement()` Live Ops's "Do it" button
+ * already calls — and a Room is open, push a small plan snapshot onto the room row so every open
+ * /visit card can update and buzz. Lives here (not in lib/console.ts) specifically to avoid a
+ * circular import: this file already depends on lib/console.ts, so console.ts calling back into
+ * this file would cycle; subscribing to the store it already imports does not.
+ */
+function planSnapshot(scn: Scenario, approved: NonNullable<ConsoleState['approved']>): PlanSnapshot {
+  const redirects: Record<string, true> = {};
+  for (const iv of approved.ivs) {
+    if (iv.type === 'nudge' && iv.ask === 'reroute') redirects[iv.cohort] = true;
+  }
+  return { approvedAt: Date.now(), redirects, gateWaitPeak: approved.result.gateWaitPeak };
+}
+
+let lastApproved: ConsoleState['approved'] = null;
+if (typeof window !== 'undefined') {
+  consoleStore.subscribe(() => {
+    const s = consoleStore.getState();
+    if (s.approved === lastApproved) return;
+    lastApproved = s.approved;
+    const id = get().id;
+    if (!s.approved || !id) return;
+    const plan = planSnapshot(s.scn, s.approved);
+    if (get().offline) set((st) => ({ snap: st.snap ? { ...st.snap, plan } : null }));
+    else post('plan', { plan });
+  });
 }

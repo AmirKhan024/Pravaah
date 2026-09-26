@@ -9,7 +9,7 @@ import type { Lang } from '@/engine';
 import { classifyServerResponse, deriveChoice, type ResponseKind } from './roomResponses';
 import { seededGroupSize } from './seededGroup';
 import { supabaseAdmin } from './supabase';
-import type { GroupResponse, Participant, PhoneView, RoomBroadcast, RoomCohort, RoomOutcome, RoomSnapshot, Vote } from './roomTypes';
+import type { GroupResponse, Participant, PhoneView, PlanSnapshot, RoomBroadcast, RoomCohort, RoomOutcome, RoomSnapshot, Vote, VisitOrigin } from './roomTypes';
 
 const WORDS = ['GATE', 'FLOW', 'NERUL', 'RIVER', 'LANE', 'PATH', 'TIDE', 'BRASS'];
 function newId() {
@@ -23,11 +23,17 @@ function db() {
   return c;
 }
 
-export async function createRoom(cohorts: RoomCohort[], scenarioId: string): Promise<{ id: string }> {
+export async function createRoom(
+  cohorts: RoomCohort[],
+  scenarioId: string,
+  t0Min = 0,
+  origins: VisitOrigin[] = [],
+  baseGateWaitPeak: Record<string, number> = {},
+): Promise<{ id: string }> {
   const c = db();
   for (let attempt = 0; attempt < 8; attempt++) {
     const id = newId();
-    const { error } = await c.from('rooms').insert({ id, scenario_id: scenarioId, cohorts, status: 'open' });
+    const { error } = await c.from('rooms').insert({ id, scenario_id: scenarioId, cohorts, status: 'open', t0_min: t0Min, origins, base_gate_wait_peak: baseGateWaitPeak, plan: null });
     if (!error) return { id };
     // unique-violation on id -> collision, try another code; any other error -> surface it
     if (error.code !== '23505') throw new Error('createRoom failed: ' + error.message);
@@ -42,9 +48,18 @@ export async function roomExists(id: string): Promise<boolean> {
 }
 
 async function getRoomRow(id: string) {
-  const { data, error } = await db().from('rooms').select('id, cohorts, broadcast, outcome').eq('id', id.toUpperCase()).maybeSingle();
+  const { data, error } = await db().from('rooms').select('id, cohorts, broadcast, outcome, t0_min, origins, base_gate_wait_peak, plan').eq('id', id.toUpperCase()).maybeSingle();
   if (error) throw new Error('getRoomRow failed: ' + error.message);
-  return data as { id: string; cohorts: RoomCohort[]; broadcast: RoomBroadcast | null; outcome: RoomOutcome | null } | null;
+  return data as {
+    id: string;
+    cohorts: RoomCohort[];
+    broadcast: RoomBroadcast | null;
+    outcome: RoomOutcome | null;
+    t0_min: number | null;
+    origins: VisitOrigin[] | null;
+    base_gate_wait_peak: Record<string, number> | null;
+    plan: PlanSnapshot | null;
+  } | null;
 }
 
 async function assignCohort(roomId: string, cohorts: RoomCohort[]): Promise<string> {
@@ -143,6 +158,11 @@ export async function setOutcome(id: string, o: RoomOutcome): Promise<void> {
   if (error) throw new Error('setOutcome failed: ' + error.message);
 }
 
+export async function setPlan(id: string, plan: PlanSnapshot): Promise<void> {
+  const { error } = await db().from('rooms').update({ plan }).eq('id', id.toUpperCase());
+  if (error) throw new Error('setPlan failed: ' + error.message);
+}
+
 export async function reset(id: string): Promise<void> {
   const roomId = id.toUpperCase();
   await db().from('votes').delete().eq('room_id', roomId);
@@ -184,7 +204,19 @@ export async function snapshot(id: string): Promise<RoomSnapshot | null> {
   const [{ data: parts, error: pErr }, votes] = await Promise.all([db().from('participants').select('id, cohort, lang, joined_at, simulated, group_size').eq('room_id', room.id), loadVotes(room.id)]);
   if (pErr) throw new Error('snapshot participants failed: ' + pErr.message);
   const participants: Participant[] = (parts || []).map((p) => ({ id: p.id, cohort: p.cohort, lang: p.lang as Lang, joinedAt: +new Date(p.joined_at), simulated: p.simulated, groupSize: p.group_size }));
-  return { id: room.id, cohorts: room.cohorts, participants, votes, broadcast: room.broadcast, outcome: room.outcome, now: Date.now() };
+  return {
+    id: room.id,
+    cohorts: room.cohorts,
+    participants,
+    votes,
+    broadcast: room.broadcast,
+    outcome: room.outcome,
+    t0Min: room.t0_min ?? 0,
+    origins: room.origins ?? [],
+    baseGateWaitPeak: room.base_gate_wait_peak ?? {},
+    plan: room.plan,
+    now: Date.now(),
+  };
 }
 
 export async function phoneView(id: string, pid: string): Promise<PhoneView> {

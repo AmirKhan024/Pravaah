@@ -60,6 +60,13 @@ export default function RoomPanel() {
             <div className="kicker">Room code</div>
             <div className="num mt-1 text-[40px] font-semibold tracking-[0.06em] text-brass">{r.id}</div>
             {r.url ? <div className="num mt-1 text-[13px] text-dim">{r.url}</div> : null}
+            {r.visitUrl ? (
+              <div className="mt-3 text-[12px] text-dimmer">
+                Individual visitor?
+                <br />
+                <span className="num text-dim">{r.visitUrl}</span>
+              </div>
+            ) : null}
           </div>
         </div>
 

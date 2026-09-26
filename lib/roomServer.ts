@@ -12,7 +12,7 @@ import type { ResponseKind } from './roomResponses';
 import { supabaseConfigured } from './supabase';
 import * as mem from './roomServer.memory';
 import * as sb from './roomServer.supabase';
-import type { GroupResponse, Participant, PhoneView, RoomBroadcast, RoomCohort, RoomOutcome, RoomSnapshot } from './roomTypes';
+import type { GroupResponse, Participant, PhoneView, PlanSnapshot, RoomBroadcast, RoomCohort, RoomOutcome, RoomSnapshot, VisitOrigin } from './roomTypes';
 
 function backend() {
   return supabaseConfigured() ? sb : mem;
@@ -22,13 +22,15 @@ export function usingSupabase(): boolean {
   return supabaseConfigured();
 }
 
-export const createRoom = (cohorts: RoomCohort[], scenarioId: string): Promise<{ id: string }> => backend().createRoom(cohorts, scenarioId);
+export const createRoom = (cohorts: RoomCohort[], scenarioId: string, t0Min = 0, origins: VisitOrigin[] = [], baseGateWaitPeak: Record<string, number> = {}): Promise<{ id: string }> =>
+  backend().createRoom(cohorts, scenarioId, t0Min, origins, baseGateWaitPeak);
 export const roomExists = (id: string): Promise<boolean> => backend().roomExists(id);
 export const join = (id: string, pid: string, lang: Lang, simulated = false): Promise<Participant | null> => backend().join(id, pid, lang, simulated);
 export const markSeen = (id: string, pid: string): Promise<void> => backend().markSeen(id, pid);
 export const vote = (id: string, pid: string, response: ResponseKind, groupResponse?: GroupResponse | null): Promise<boolean> => backend().vote(id, pid, response, groupResponse);
 export const setBroadcast = (id: string, b: Omit<RoomBroadcast, 'sentAt'>): Promise<void> => backend().setBroadcast(id, b);
 export const setOutcome = (id: string, o: RoomOutcome): Promise<void> => backend().setOutcome(id, o);
+export const setPlan = (id: string, plan: PlanSnapshot): Promise<void> => backend().setPlan(id, plan);
 export const reset = (id: string): Promise<void> => backend().reset(id);
 export const snapshot = (id: string): Promise<RoomSnapshot | null> => backend().snapshot(id);
 export const phoneView = (id: string, pid: string): Promise<PhoneView> => backend().phoneView(id, pid);

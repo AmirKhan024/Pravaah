@@ -15,6 +15,10 @@ function snap(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
     votes: {},
     broadcast: null,
     outcome: null,
+    t0Min: 0,
+    origins: [],
+    baseGateWaitPeak: {},
+    plan: null,
     now: 0,
     ...overrides,
   };

@@ -5,6 +5,53 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-27 — /visit: why it rides the Room instead of a new channel, and what that costs
+
+**`/visit` requires an open Room; there is no visitor flow with no Room at all.** The brief said
+"reuse the Room's realtime path and its offline fallback," and the Room's realtime path is
+*specifically* a Supabase `rooms` row plus a shareable code/link — there is no lighter-weight
+"any device can read the console's live state" channel in this app, and building one (a second
+cross-device sync system, keyed some other way) would be new backend surface, which the ground
+rules explicitly forbid. So `/visit/<roomId>` reuses the exact row "Open the Room" already creates,
+with three additive columns (`origins`, `t0_min`, `base_gate_wait_peak`) and one additive field
+(`plan`) alongside the ones the Room already had. **Cost accepted:** a presenter must click "Open
+the Room" before handing out the visitor link, same as they already do for judges' phones — one
+extra click, not a new step in the demo.
+
+**Party size and travel mode are shown back to the visitor, never fed into the simulation as a new
+person.** A truly live per-visitor re-simulate (adding one more person to the loaded `Scenario` and
+re-running) is real engine work — a new cohort, a new arrival curve, a fresh `simulate()` call per
+visitor — for a number that would never be large enough to move a crowd of tens of thousands
+either way. **Why this is the right cut, not a shortcut:** SOURCE_OF_TRUTH §3.2's rule is that no
+UI number can be *invented*; showing the visitor's own stated party size back to them is not
+inventing anything, it's literally what they typed. What would violate it is quietly using their
+party size to nudge a gate/crush number nobody actually simulated — which this build never does.
+
+**The visitor's "coming from" list is the scenario's own cohorts (`VisitOrigin`), not a free-text
+autocomplete of every zone.** The brief said "stations, areas or hotels from the loaded scenario" —
+a scenario's cohorts already *are* those stations/areas/hotels (Nerul station, Seawoods, Palm Beach
+cabs, the four hotel clusters, self-drive, late bookings, for DY Patil). **Why not walk the zone
+graph directly instead:** a cohort is the thing that actually has a path/alt-gate/arrival-time
+attached to it; a bare zone does not. Picking a cohort-derived origin means the gate/leave-by/route
+the visitor sees is always a real, already-computed thing, not something built fresh per visitor.
+
+**The food/stay tip is computed once, when the room opens — not re-computed on every plan update
+the way gate/leave-by are.** The brief's own emphasis ("When the head taps 'Do it', the card
+updates and buzzes") is squarely about gate and timing, the two things a redirect plan actually
+changes; food-stall queues and hotel-coach timing are real but secondary content. Recomputing the
+tip live would mean either shipping a lot more scenario data into `plan` (defeating the point of
+keeping the visitor's device light) or re-deriving it from data the room doesn't carry. Flagged
+here rather than silently narrowed, since a `foodWaitPeak` genuinely could change after a redirect.
+
+**No offline fallback for `/visit` itself (an actual gap, not a design choice worth defending).**
+The Room's own offline mode ("no network — runs as a simulation on this machine") only makes sense
+same-device: there is no server to relay through, so a *different* device could never see it
+anyway. `openRoom()`'s offline branch sets `visitUrl: ''`, so no visitor link is even offered in
+that mode. This is honestly a limitation, not a considered trade-off — logged so it isn't
+mistaken for one.
+
+---
+
 ## 2026-09-27 — Venue-owner flow + registration upload: what was reused, what was overruled
 
 **Reused from `../pravaah-v2`**: the trust vocabulary and colour ladder (claimed/document-checked/

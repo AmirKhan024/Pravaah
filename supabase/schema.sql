@@ -116,3 +116,12 @@ alter table votes add constraint votes_group_response_check check (group_respons
 alter table votes add column if not exists seen_at timestamptz;
 alter table votes add column if not exists responded_at timestamptz;
 alter table votes add column if not exists response_delay_ms integer;
+
+-- /visit: a single visitor's own card, reusing this same rooms row rather than a new table.
+-- Additive only — t0_min/origins default to values that make an old room row degrade harmlessly
+-- (no /visit link would have been generated for it anyway, since that link is only ever handed
+-- out alongside a room created after this migration).
+alter table rooms add column if not exists t0_min integer not null default 0;
+alter table rooms add column if not exists origins jsonb not null default '[]'::jsonb;
+alter table rooms add column if not exists base_gate_wait_peak jsonb not null default '{}'::jsonb;
+alter table rooms add column if not exists plan jsonb;

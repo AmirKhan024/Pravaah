@@ -4,6 +4,76 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-27 — /visit: a single visitor's own card, reusing the Room's realtime path
+
+A demo-level personal card (gate, leave-by, route, one tip) for one visitor, no login — built as
+an additive extension of the existing Room (Supabase `rooms` row + Realtime + polling fallback),
+not a new backend. See docs/DECISIONS.md for why it rides the Room instead of a new channel.
+
+**Changed**
+- **`lib/roomTypes.ts`**: new `VisitOrigin` (every cohort, not just the Room's alt-having ones —
+  origin/mode label, main + alt gate id/name, a precomputed food-or-stay tip) and `PlanSnapshot`
+  (`approvedAt`, which cohorts are currently redirected, live `gateWaitPeak`). `RoomSnapshot` gains
+  `t0Min` (so a visitor's device can format an HH:MM clock without shipping the whole `Scenario`),
+  `origins`, `baseGateWaitPeak` (the do-nothing run's gate waits — see the bug below), `plan`.
+- **`lib/roomServer.memory.ts` / `.supabase.ts` / the facade**: `createRoom()` gains three optional,
+  additive parameters; new `setPlan()` mirrors the existing `setOutcome()` exactly. `snapshot()`/
+  `getRoomRow()` select lists extended. **`supabase/schema.sql`**: additive migration
+  (`t0_min`/`origins`/`base_gate_wait_peak`/`plan` columns on `rooms`, all with safe defaults) —
+  applied to the live project via `scripts/apply-schema.mjs`.
+- **`app/api/room/route.ts`**: accepts `t0Min`/`origins`/`baseGateWaitPeak` in the create body.
+  **`app/api/room/[id]/route.ts`**: new `action: 'plan'`, same shape as the existing `outcome` case.
+- **`lib/room.ts`**: `visitOrigins(scn, res)` (reuses `deriveRoomCohortProfile()` — genuine reuse,
+  not a parallel implementation) plus a one-line food-or-stay tip generator (`foodWaitPeak` near
+  the gate, or a stay-tip if the origin is a hotel). `openRoom()` now also computes and sends
+  `origins`/`t0Min`/`baseGateWaitPeak`. A new `consoleStore.subscribe()` watches `approved` by
+  reference and, only on a genuine new approval with a room open, pushes a `PlanSnapshot` — this
+  lives in `lib/room.ts` (not `lib/console.ts`) specifically to avoid a circular import, since this
+  file already depends on `console.ts`.
+- **`lib/visit.ts`** (new, pure, framework-free like `engine/`): `buildVisitCard()` — same
+  RoomSnapshot + same choices always produce the same card; a redirect only ever uses a cohort's
+  real `alt_gates` gate, never invented. **`components/room/RoomPanel.tsx`**: the room's QR panel
+  now also prints the `/visit/<id>` link underneath the existing `/join/<id>` one.
+- **`app/visit/[roomId]/`** (new route): `Visit.tsx` — language pick (mr/hi/en, reusing
+  `messages.ts`'s `LANGS`) → a 4-field form (coming from / travel mode / staying overnight / party
+  size) → the card. Fetch + Supabase Realtime subscribe + polling fallback on the `rooms` table,
+  mirroring `app/join/[roomId]/Phone.tsx`'s own pattern exactly (same reuse the brief asked for);
+  vibrates once per new `plan.approvedAt`, same `navigator.vibrate` call `Phone.tsx` already uses.
+
+**A real bug, caught by this feature's own first live end-to-end run (Playwright, real dev server,
+real Supabase, not a mock).** The pre-approval card's "leave by" time used `plan?.gateWaitPeak ?? 0`
+— before any plan existed, that silently assumed the gate had **zero** queue, when the do-nothing
+run says otherwise (DY Patil's own West-forecourt Gate 3 is badly congested by design). The very
+first run showed a nonsensical *earlier* leave-by time appear *after* redirecting to a quieter gate
+— the numbers were internally inconsistent in a way that would have looked wrong to anyone glancing
+at the two screenshots side by side. Fixed by threading the do-nothing run's real
+`SimResult.gateWaitPeak` through as `baseGateWaitPeak`, used only until a real plan exists. Pinned
+in `lib/__tests__/visit.test.ts`.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 128/129 (7 new in `visit.test.ts`; the one failure,
+  `engine/__tests__/venues.test.ts`'s pre-existing `<30ms` perf assertion, is the same
+  flaky-under-full-suite-load test noted in prior entries — passes clean alone, confirmed again).
+- Live, via Playwright against the real dev server and the real Supabase project (schema migration
+  actually applied, not simulated): reset to the DY Patil flagship, rehearsed the evening, opened
+  the Room *before* approving anything, opened `/visit/<id>` in a second browser page, picked
+  English, chose "Nerul station" — the card read **Gate 3 · leave by 18:01 · "From Nerul station,
+  by Local train, to Gate 3." · "West forecourt food stalls gets busy — expect about 74 min in
+  line."** Back in the console, approved the recommended "Zero rupees" plan (the flagship's own
+  known free fix: redirect Nerul/Seawoods/cab arrivals to Gate 5). Within a few seconds, with zero
+  manual refresh, the `/visit` tab updated to **"Your gate changed — the event has redirected your
+  group." · Gate 5 · leave by 18:27** — a real Realtime round trip through the live Supabase
+  project, not same-tab state.
+
+**Still fake / not built**: party size and travel mode are the visitor's own words, shown back but
+never fed into the simulation as a new person (a real per-visitor re-simulate is out of scope for a
+demo slice — see docs/DECISIONS.md). The food/stay tip is computed once, when the room opens, not
+re-computed live like the gate/leave-by numbers are. "Where staying" only changes which tip is
+shown; it does not change routing. Offline/no-room fallback (opening `/visit` when no Room exists,
+or with `DEMO_OFFLINE=1`) was not built — see docs/DECISIONS.md.
+
+---
+
 ## 2026-09-27 — Venue-owner flow (ported from ../pravaah-v2) + AI-powered registration upload
 
 Two new slices, client-only, no new Supabase tables or API routes beyond a stateless Groq proxy:

@@ -64,6 +64,34 @@ export interface Vote {
   responseDelayMs?: number | null;
 }
 
+/**
+ * /visit (a single visitor's own card, no login) — additive alongside the Room's existing
+ * cohort-broadcast machinery, not a replacement for it. `VisitOrigin` covers EVERY cohort (not
+ * just ones the Room can nudge), since a visitor's "coming from" list should be every real
+ * station/area/hotel in the loaded scenario, not only the ones eligible for a redirect message.
+ */
+export interface VisitOrigin {
+  id: string; // cohort id
+  label: string; // e.g. "Nerul rail"
+  originLabel: string; // e.g. "Nerul station"
+  transportMode: string; // e.g. "Local train"
+  meanTick: number; // cohort.mean — this cohort's usual arrival tick, for the leave-by estimate
+  mainGateId: string;
+  mainGateName: string;
+  altGateId: string | null;
+  altGateName: string | null;
+  isHotel: boolean;
+  /** one food-or-stay tip, computed once when the room opened from whatever run was current then */
+  tip: string;
+}
+/** what changed the last time the head approved or updated a plan — pushed to the room so every
+ *  open /visit card can update and buzz, the same way a broadcast updates every /join phone. */
+export interface PlanSnapshot {
+  approvedAt: number; // wall-clock ms — "is this newer than what I last saw"
+  redirects: Record<string, true>; // cohortId -> true when the approved plan routes them via altGateId
+  gateWaitPeak: Record<string, number>; // gateId -> minutes, from the approved result
+}
+
 export interface RoomSnapshot {
   id: string;
   cohorts: RoomCohort[];
@@ -71,6 +99,16 @@ export interface RoomSnapshot {
   votes: Record<string, Vote>;
   broadcast: RoomBroadcast | null;
   outcome: RoomOutcome | null;
+  /** t0Min of the scenario this room was opened for — the one piece of clock context a visitor's
+   *  device needs to turn a cohort's `meanTick`/a gate-wait minute count into an HH:MM string,
+   *  without shipping the whole Scenario to a visitor's phone. */
+  t0Min: number;
+  origins: VisitOrigin[];
+  /** gate wait, minutes, from the do-nothing run at room-open time — the /visit card's fallback
+   *  before any plan exists, so a pre-approval leave-by time reflects the real (often bad) queue
+   *  instead of quietly assuming zero wait (a real bug caught live — see docs/DECISIONS.md). */
+  baseGateWaitPeak: Record<string, number>;
+  plan: PlanSnapshot | null;
   now: number;
 }
 

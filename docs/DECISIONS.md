@@ -5,6 +5,48 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-27 — Data-driven: four choices worth explaining
+
+**Quick Start's venue step reuses the existing OSM importer rather than a fake single-gate default.**
+The brief's step 2 (5-6 inputs, immediate answer) and step 3 (venue auto-fill) read as sequential,
+but a genuinely useful "immediate answer" needs real gate/station/hotel geometry, which only the
+importer (`engine/venueImport/buildGraph.ts`) can produce from a venue name. **Why:** building a
+throwaway single-gate scenario for step 2 and then replacing it with the importer's output for
+step 3 would mean two code paths producing two different "first answers" for the same input, and
+the second one silently invalidating the first. Folding them into one `/setup` flow (cached venue =
+offline path, live search = online path) means there's exactly one "first answer," and it's already
+the richer one.
+
+**`Scenario.zones[venue].capacity` is set to the sum of `arrivals.csv` sizes, not `event.csv`'s
+raw stadium capacity.** `engine/__tests__/venues.test.ts`'s `checkGraph()` (and, on inspection,
+`dyPatil` itself: its 9 cohorts sum to exactly 84,000) treats `sum(cohort.size) === venue.capacity`
+as a real invariant, not an artifact of one hand-built scenario. **Why:** the simulation is of the
+people who actually show up, not the empty seats; DY Patil's own 45,000-seat/97.1%-turnout sample
+data confirms this reading (`tickets.csv`'s T-1 total and `arrivals.csv`'s total both land on
+43,709, independently). The stadium's nominal capacity and turnout % are kept in `scenario.sub`'s
+text for display, never fed into the sim as if they were attendance.
+
+**The confidence meter counts CSV rows, not individual fields.** Considered tagging every column
+of every row separately for a more granular "38 of 312 individual values are invented" count.
+**Why not:** the sample data's own `status`/`source_note` columns are already per-row, not
+per-field — a `gates.csv` row is invented or it isn't, as a whole editorial judgment by whoever
+filled it in; splitting it into per-column tags would invent a precision the source data doesn't
+have. Row-level counting also produced a suspiciously exact match to the brief's own worked example
+("38 of 73 inputs are invented" — this repo's sample lands on 73 total rows), which reads like
+row-counting was the intended granularity.
+
+**Cut order followed the brief's own list, with one deviation.** Stopped after step 6 (no
+hardcoding) plus the confidence/calibration pieces of steps 4-5, cutting 8 (weather) and 7
+(timeline UI) as instructed. Step 3 (venue auto-fill) was *not* cut, despite being listed as the
+first thing to drop if time were short — because it turned out to be nearly free once Quick Start
+needed venue geometry anyway (see above), not a separate feature competing for the same time
+budget. Full per-section Quick Start editors (steps for gates/tickets/hotels/resources as separate
+forms) were cut instead, since CSV upload and the sample already cover "add real detail" and a
+second, redundant editing surface felt like exactly the kind of feature the brief's "keep the UI
+minimal" rule warns against building.
+
+---
+
 ## 2026-09-26 — Dynamic Telegram: staying one-way, and one dedup simplification
 
 **Telegram stays one-way, as the brief explicitly asks to note.** `lib/telegram.ts` gained

@@ -4,6 +4,80 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-27 — Data-driven: an event head's own data, from /setup to /live
+
+Judges said `/live` looked hardcoded and dummy. Fixed the actual cause, not the appearance: the
+whole app read one module-level `dyPatil` constant, and a dozen `scn.id === 'dyPatil'` branches
+carried literal gate/cohort ids. Built the missing seam end to end instead — loader, entry point,
+confidence, calibration, hardcode audit — in six commits, golden test green throughout.
+
+**Changed**
+- **`engine/csv.ts` + `engine/dataLoader.ts`** (new, pure TS, no fs/DOM): `parseCsv()` (RFC4180-ish)
+  and `loadScenarioFromRows()` turn an event head's own `event/gates/tickets/arrivals/hotels/
+  resources` rows into a `Scenario`, validating cross-references with plain-language errors
+  ("Gate G7 in arrivals.csv is not in gates.csv"), building gate/plaza/origin geometry from `side`
+  compass bearings and hotel `distance_km` (reusing `venueImport/buildGraph.ts`'s offset/bearing/
+  `VENUE_DEFAULTS` rather than duplicating them), wiring `alt_gates` into `cohort.alt` for redirects,
+  and rebuilding smaller cohorts from an earlier `tickets.csv` snapshot (`opts.snapshot`) — the seam
+  a future timeline stepper (cut this pass, see below) would use. Every row is tagged
+  real/estimated/invented and returned as `fields: DataField[]`, with `computeConfidence()` turning
+  that into a low/medium/high level. `dyPatil` itself is untouched; this is a fully separate path.
+  10 new tests (`engine/__tests__/dataLoader.test.ts`), including one asserting the sample actually
+  breaks and a redirect helps (see Calibrate below).
+- **`lib/console.ts`**: replaced the hardcoded `BASE_SCN = dyPatil` with `loadScenario()`/
+  `resetToFlagship()` — the one seam that swaps the active `Scenario` for both `/console` and
+  `/live` at once (they read the same store), persisted to `localStorage` only (never sent to a
+  server). The "follow one person" trace (previously `RAVI.cohort`/`RAVI.release` unconditionally)
+  now falls back to the loaded scenario's biggest cohort via `focusCohortId()`/`focusRelease()`.
+  Added `dataSource`/`dataFields`/`dataConfidence`/`resources`/`raviRelease`/`raviLabel` to
+  `ConsoleState` so the UI can show real per-scenario data without recomputing it.
+- **`app/setup`** (new): the entry point. Quick Start (venue + capacity + date + gates-open +
+  kickoff + turnout, an OpenStreetMap-backed cached-or-live venue graph — folds in "venue auto-fill"
+  rather than building it twice), "Use the sample data" (via a new `/api/sample/dy-patil` route,
+  since `data/` isn't public — the route just returns raw CSV text; all parsing/validation stays
+  client-side), or upload 6 CSVs with downloadable blank templates. Linked from the landing page,
+  header nav, and Live Ops's More menu; a "reset to the DY Patil demo" action appears once a
+  custom/sample scenario is loaded.
+- **Confidence meter**: a small "confidence: low/medium/high" badge in Live Ops's header (hidden for
+  the flagship), and a full per-row Data drawer (file, row, tag, source note) added to the existing
+  "How this works, what we guessed" drawer.
+- **Calibrate the sample**: it loaded with `crushMin=0` everywhere — no gate came close to danger.
+  Tuned `gates.csv` (Gate 3: 12→7 lanes, 1600→1000 m² forecourt) and `arrivals.csv` (Nerul rail
+  spread 25→16 min), each tagged "tuned to demonstrate" in `source_note`, never touching engine
+  defaults. Now runs 37 dangerous minutes at the West gate/forecourt; a data-derived redirect
+  ("Tell nerul rail that Gate 2 is quieter", from `gates.csv`'s `alt_gates`) measurably reduces it.
+- **No hardcoding**: grepped `app/`, `components/`, `lib/`, `engine/` for every flagship gate/
+  station/figure. Fixed four real gaps — `Live.tsx`/`Console.tsx`'s map `fitKey` and `raviRelease`
+  were pinned to `"dyPatil"`/`RAVI.release` regardless of the active scenario; `Console.tsx`'s
+  story-mode caption script and `Drawers.tsx`'s after-action report both asserted "Ravi Sharma
+  reaches Nerul" unconditionally; `ReportPanel`'s placeholder used a literal "Gate 3". Everything
+  else checked out already generic with a safe fallback (`engine/interventions.ts`/`ablation.ts`'s
+  `scn.id === 'dyPatil'` branches, `lib/room.ts`/`Phone.tsx`'s cohort-label fallback) or is a cached
+  alternate venue's own real data (`engine/scenarios/venues/*`), not a flagship leak.
+
+**Cut, per the brief's own "if time is short" order**: step 8 (live weather) and step 7 (a T-90→T-1
+timeline *stepper UI*) — the loader's snapshot-rebuild already does the underlying work
+(`opts.snapshot`), so this is now a UI-only remainder, not new engine work. Full per-section
+Quick Start sub-forms (gates/tickets/hotels/resources editors) are also not built; CSV upload and
+the sample cover that need for now. Step 9 (Telegram+Groq no-hardcoding) needed no new work —
+`lib/messages.ts`/`whatifParse.ts` were already fully scenario-driven; wiring a real scenario
+through `lib/console.ts` was the only thing missing for those templates to actually see custom data.
+
+**Verified**
+- `tsc --noEmit`: clean throughout. `npx vitest run`: 84/84 (one perf-timing test is flaky under
+  load, confirmed unrelated — passes in isolation both before and after this work).
+- Manually traced (not yet screenshotted live in a browser this session — see below): Quick Start's
+  6 inputs build and load a scenario; the sample loads and its West gate shows 37 dangerous minutes,
+  fixed/reduced by a data-derived redirect; a bad CSV (unknown gate id, mismatched ticket totals)
+  returns the exact plain-language errors asserted in tests; the confidence badge and Data drawer
+  render from real `dataConfidence`/`dataFields` state.
+
+**Still open**: no live-browser screenshots were taken this pass (no browser-automation tool was
+used) — the verification above is via the engine/loader test suite and manual code tracing, not a
+running instance. Timeline stepper UI, weather, and per-section Quick Start forms remain as noted.
+
+---
+
 ## 2026-09-26 — Live control room, slice (d): dynamic Telegram
 
 The brief's six message types, each built from a structured payload — a lever, a `SimResult`, a

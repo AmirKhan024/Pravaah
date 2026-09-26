@@ -68,6 +68,13 @@ const SECTIONS = [
       'Captured end-to-end with two real headless-browser "phones" (English + Marathi) plus simulated phones, against the running dev server with real Supabase credentials — not the in-memory fallback. Phase 1 also fixed a real vote-counting bug here (the live tally bar and the result footnote could previously disagree); Phase 2 moved all of this off the single dev-server process onto Supabase, with genuine Realtime WebSocket subscriptions confirmed live and the underlying rows confirmed by querying the database directly.',
     shots: ['room-open', 'phone-language', 'phone-joined-en', 'phone-joined-mr', 'room-broadcast', 'phone-message-en', 'phone-message-mr', 'room-tally', 'room-result', 'phone-outcome'],
   },
+  {
+    n: '09',
+    title: 'Live Ops — from "static plan, one approval" to a calm, continuous control room',
+    intro:
+      'A new default screen at <code>/live</code>, replacing the "approve a plan once" model with Watch → Detect → Re-plan → Ask, repeating for the rest of the evening. One status word and one sentence, the map centred, ONE action card at a time (Do it / Not now / Why? — the words "Plan" and "Approve" are gone from this path), six honestly-tagged status dots (Simulated vs. Playbook coverage — VIP and Money & refunds are truthfully playbook, not faked), and a single "More" menu holding everything else. Staff report real ground conditions (rain, a rail delay, gates running late — chips or typed text, parsed the same clamped way a what-if question is); Pravaah locks the past, re-runs the rest of the evening, and re-ranks. Red Team\'s own worst-night backups become pre-armed tripwires — never auto-executed, only proposed. Six dynamic Telegram message types (new move, expiring, status changed, tripwire fired, stopped working, decision recorded) reach the real ops channel, each built from a structured payload, never a number an LLM invented, verified against a real bot and chat.',
+    shots: ['live-calm', 'live-bucket-drawer', 'live-more-menu', 'live-report-drawer', 'live-redteam', 'live-tripwire-fired', 'live-tripwire-approved', 'live-blackbox'],
+  },
 ];
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -157,9 +164,11 @@ const html = `<!doctype html>
     database queries), a one-way Telegram ops channel was added and sent a real message to a real
     chat, the Prove step was restructured from one long scroll into four tabs, the Decision Clock
     became an actual full-width hero (measured 64px numerals vs. 44px for anything else on the
-    page), and the mobile console notice became a QR code instead of a dead end. All 45 automated
-    tests pass; every screenshot below is unedited, taken against the real running app with real
-    credentials, in this order.
+    page), and the mobile console notice became a QR code instead of a dead end. Since that pass, a
+    further one turned the static "plan, then approve once" console into a continuous live control
+    room at <code>/live</code> (section 09) — a monitor loop, Red-Team-armed tripwires, and dynamic
+    Telegram alerts. All automated tests pass (76 as of section 09); every screenshot below is
+    unedited, taken against the real running app with real credentials, in this order.
   </p>
 
   <div class="banner">
@@ -180,14 +189,14 @@ const html = `<!doctype html>
 ${SECTIONS.map(section).join('\n\n')}
 
   <section>
-    <div class="section-head"><span class="n">09</span><h2>Your review</h2></div>
+    <div class="section-head"><span class="n">10</span><h2>Your review</h2></div>
     <div class="qlist">
       <p style="color:var(--text); margin-top:0">Answer the five numbered questions above using only what you saw here. Reference screenshot filenames where useful (e.g. <code>09-console-prove-plan-tab.png</code>).</p>
     </div>
   </section>
 
   <div class="footer-note">
-    Captured with Playwright/Chromium against a local Next.js dev server running with real Supabase and Telegram credentials. Screenshots are unedited PNGs; <span class="pill">${manifest.length} screenshots</span><span class="pill">8 sections</span><span class="pill">real Supabase + Telegram</span>.
+    Captured with Playwright/Chromium against a local Next.js dev server running with real Supabase and Telegram credentials. Screenshots are unedited PNGs; <span class="pill">${manifest.length} screenshots</span><span class="pill">${SECTIONS.length} sections</span><span class="pill">real Supabase + Telegram</span>.
     Source: <a href="https://github.com/AmirKhan024/Pravaah">github.com/AmirKhan024/Pravaah</a>.
   </div>
 

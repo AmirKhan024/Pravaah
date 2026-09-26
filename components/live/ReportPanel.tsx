@@ -23,6 +23,7 @@ const CHIPS: { label: string; patch: () => Record<string, unknown> }[] = [
 
 export default function ReportPanel() {
   const s = useSlice(store, (st) => ({ observed: st.observed, tick: Math.floor(st.tick) }));
+  const firstGate = useSlice(store, (st) => st.scn.zones.find((z) => z.type === 'gate')?.name ?? 'Gate 1');
   const reports = useSlice(store, (st) => st.ledger.filter((e) => e.type === 'staff_report').slice(-5).reverse());
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
@@ -71,7 +72,7 @@ export default function ReportPanel() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Type what you're seeing: e.g. Gate 3 scanners are down"
+          placeholder={`Type what you're seeing: e.g. ${firstGate} scanners are down`}
           className="h-9 flex-1 bg-transparent text-[13px] text-text placeholder:text-dimmer focus:outline-none"
         />
         <Button size="sm" variant="solid" disabled={busy}>

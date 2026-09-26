@@ -62,6 +62,9 @@ export default function Live() {
         </Link>
         <span className="hidden truncate text-[11.5px] text-dimmer lg:inline">{scnName} · live ops</span>
         <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => store.setState({ drawer: 'observe' })} className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-dim hover:border-brass-dim/60 hover:text-text">
+            Report
+          </button>
           <MoreMenu />
           <Link href="/console" className="rounded-lg border border-brass-dim/60 px-3 py-1.5 text-[12.5px] text-brass hover:bg-panel-2">
             Full console →

@@ -5,6 +5,45 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-26 — Monitor loop: three choices worth explaining
+
+**1. A fired tripwire installs Red Team's precomputed backup directly — it does not ask the
+optimiser to search again.** `runMonitorTick()`'s tripwire branch skips step 2 (the fresh
+`engine().replan()` call) entirely when a tripwire fires. **Why:** the backup was already computed,
+specifically for the single worst night Red Team found, by the same optimiser, with the same cost
+weights (`redTeam.ts`'s `withBackup` search). Running the optimiser again on the newly-observed
+scenario would likely converge on something very close to that same backup anyway, at real cost
+(another worker round-trip) and — more importantly — at the cost of the story being told: "Red
+Team already found this, here is what it already found works" is a stronger, more honest claim
+than "a fresh search just happened to agree." **Trade-off accepted:** the backup was computed for
+Red Team's *worst* version of this factor (e.g. the single worst rain night in the grid), not the
+exact severity actually observed — it may be slightly more conservative than strictly necessary.
+Acceptable: conservative-and-proven beats precise-and-unverified for a tripwire that's about to be
+handed to someone stressed with five seconds to look at it.
+
+**2. `approveReplacement()` is a separate function from `approve()`, not a parameter on it.**
+Considered adding an `atTick` override to `approve()` instead (smaller diff). **Why not:**
+`approve()`'s side effects — jumping into `mode: 'replay'` at a fixed tick range, a 7x speed
+canned playback to `stopAt: 372` — are specifically right for a *first*, pre-event approval (the
+guided "watch the outcome" moment `SOURCE_OF_TRUTH` §12's demo beat depends on). A mid-event
+re-approval after a plan stopped working must do the opposite: stay in `live` mode, at the real
+clock, so the organiser keeps watching the actual evening, not a replay of a different one. Sharing
+one function with a flag to invert half its behaviour would have been more confusing to read than
+two short, named functions with different jobs.
+
+**3. "Stopped working" fires at +3 dangerous minutes over what was promised, not any
+regression.** The recheck re-simulates the exact same approved levers under new conditions every
+monitor tick; small negative drift (1-2 minutes) is expected numerical/ensemble-adjacent noise
+across different scenario clones, not a real failure. **Why 3, not something derived from Red
+Team's own SURVIVE_CRUSH=5 threshold:** `SURVIVE_CRUSH` defines "does a whole *night* count as
+safe" for the stress grid; this is a much narrower question — "did *this specific* approved plan's
+own promise get meaningfully broken by what's now been reported" — and reusing the night-level
+constant here would have implied a connection between the two that doesn't actually exist. Flagged
+here in case field data later shows 3 is too sensitive or not sensitive enough — it is not derived
+from anything the engine computed, unlike everything else in this pass.
+
+---
+
 ## 2026-09-26 — Live control room brief: where this pass overrules the brief, and why
 
 Working from the "calm, live control room" brief (turn Pravaah from a static plan+approve tool

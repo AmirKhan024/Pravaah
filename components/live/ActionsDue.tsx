@@ -11,15 +11,16 @@
  */
 import { useEffect, useState } from 'react';
 import { useSlice } from '@/lib/createStore';
-import { approve, openLeverWhy, opsLevers, orderSentAt, skipLever, store } from '@/lib/console';
+import { actionState, approve, approveReplacement, openLeverWhy, opsLevers, orderSentAt, skipLever, store } from '@/lib/console';
 import { ORDER_KIND, ordersFor, sendOrderToTelegram } from '@/components/console/OrdersPanel';
 import { Button, cx, Pill } from '@/components/ui';
 import type { Lever } from '@/engine';
 
 function Countdown({ lever }: { lever: Lever }) {
-  const s = useSlice(store, (s) => ({ board: s.board, t: Math.floor(s.tick), expired: s.expired.indexOf(lever.label) >= 0, approved: !!s.approved }));
-  if (s.approved) return <Pill tone="safe">in force</Pill>;
-  if (s.expired) return <Pill tone="danger">closed</Pill>;
+  const s = useSlice(store, (s) => ({ board: s.board, t: Math.floor(s.tick), state: actionState(lever.label, s) }));
+  if (s.state === 'accepted') return <Pill tone="safe">in force</Pill>;
+  if (s.state === 'skipped') return <Pill tone="danger">not now</Pill>;
+  if (s.state === 'expired') return <Pill tone="danger">closed</Pill>;
   const o = s.board?.find((x) => x.label === lever.label);
   if (!o || o.useless) return <Pill>no deadline</Pill>;
   const left = o.deadlineTick - s.t;
@@ -32,18 +33,32 @@ function Countdown({ lever }: { lever: Lever }) {
 }
 
 function ActionCard({ lever }: { lever: Lever }) {
-  const s = useSlice(store, (s) => ({ approved: s.approved, scn: s.scn, expired: s.expired.indexOf(lever.label) >= 0, replanBusy: s.replanBusy }));
+  const s = useSlice(store, (s) => ({
+    approved: s.approved,
+    approvedStatus: s.approvedStatus,
+    scn: s.scn,
+    state: actionState(lever.label, s),
+    replanBusy: s.replanBusy,
+    monitorBusy: s.monitorBusy,
+  }));
+  const accepted = s.state === 'accepted';
+  const stoppedWorking = !!s.approved && s.approvedStatus === 'stopped-working' && !accepted;
   const [sending, setSending] = useState<{ busy: boolean; error?: string }>({ busy: false });
 
   // the order this lever produces, and whether it's already been sent — read from the same
   // shared record the Orders tab's own Telegram button writes to (lib/console.ts's sentOrders),
   // so this card and that button can never disagree about "sent" and never double-send.
-  const order = s.approved ? ordersFor(s.scn, [lever], s.approved.result)[0] : null;
+  const order = accepted && s.approved ? ordersFor(s.scn, [lever], s.approved.result)[0] : null;
   const isOpsOrder = !!order && order.kind !== 'crowd';
   const sentAt = useSlice(store, () => (order ? orderSentAt(order.title) : undefined));
 
   const doIt = async () => {
-    if (!store.getState().approved) approve();
+    if (!accepted) {
+      // a stopped-working plan gets replaced with the fresh one, at now, staying live — never the
+      // canned first-approval replay. A plain first approval uses approve() as before.
+      if (stoppedWorking) approveReplacement();
+      else approve();
+    }
     const app = store.getState().approved;
     if (!app) return; // approve() can no-op if there's nothing selected to approve
     const ord = ordersFor(store.getState().scn, [lever], app.result)[0];
@@ -55,12 +70,17 @@ function ActionCard({ lever }: { lever: Lever }) {
 
   return (
     <div className="rounded-xl border border-line bg-panel-2/60 p-4">
+      {stoppedWorking ? (
+        <div className="mb-2 flex items-center gap-1.5 text-[11.5px] text-danger-soft">
+          <i className="size-1.5 rounded-full bg-danger" /> stopped working — new move
+        </div>
+      ) : null}
       <div className="flex items-start justify-between gap-3">
         <div className="text-[14px] font-medium leading-snug text-text">{lever.label}</div>
         <Countdown lever={lever} />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        {sentAt || (s.approved && !isOpsOrder) ? (
+        {sentAt || (accepted && !isOpsOrder) ? (
           <span className="inline-flex items-center gap-1.5 rounded-md bg-safe/10 px-2.5 py-1.5 text-[12.5px] text-safe">
             <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden>
               <path d="M3 8.5l3.2 3L13 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -68,13 +88,13 @@ function ActionCard({ lever }: { lever: Lever }) {
             {sentAt ? `Done · sent to ops · ${sentAt}` : 'Done · in force'}
           </span>
         ) : (
-          <Button size="sm" variant="solid" disabled={sending.busy} onClick={doIt}>
-            {sending.busy ? 'Sending…' : s.approved ? 'Send to ops' : 'Do it'}
+          <Button size="sm" variant="solid" disabled={sending.busy || s.monitorBusy} onClick={doIt}>
+            {sending.busy ? 'Sending…' : accepted ? 'Send to ops' : 'Do it'}
           </Button>
         )}
-        {!s.approved ? (
-          <Button size="sm" variant="quiet" disabled={s.expired || s.replanBusy} onClick={() => skipLever(lever.label)}>
-            {s.expired ? 'Not now · skipped' : 'Not now'}
+        {!accepted && !stoppedWorking ? (
+          <Button size="sm" variant="quiet" disabled={s.state === 'skipped' || s.state === 'expired' || s.replanBusy} onClick={() => skipLever(lever.label)}>
+            {s.state === 'skipped' ? 'Not now · skipped' : 'Not now'}
           </Button>
         ) : null}
         <Button size="sm" variant="quiet" onClick={() => openLeverWhy(lever.label)}>

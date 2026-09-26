@@ -8,6 +8,8 @@
  */
 import { CRUSH, comma, inr, type Scenario, type SimResult } from '@/engine';
 import { scenarioFacts } from './facts';
+import { describeSpec, type WhatIfSpec } from './whatifParse';
+import { isObservedEmpty } from './monitor';
 
 export type BucketId = 'crowd' | 'transport' | 'hotels' | 'weather' | 'vip' | 'money';
 export type BucketStatus = 'safe' | 'watch' | 'act';
@@ -28,7 +30,11 @@ export interface BucketSourceState {
   scn: Scenario;
   cur: SimResult;
   base: SimResult;
+  /** a manual, one-off preview test (WhatIfBar) — ephemeral, cleared on demand */
   whatIf: { label: string } | null;
+  /** the running, merged patch built from real staff reports (lib/monitor.ts) — persistent,
+   *  what's actually believed to be happening right now */
+  observed?: WhatIfSpec;
   /** a free-text staff report about VIP movement, if one has been logged — no number, just a flag */
   vipNote?: string | null;
 }
@@ -104,16 +110,24 @@ function hotelsBucket(s: BucketSourceState): BucketInfo {
 }
 
 function weatherBucket(s: BucketSourceState): BucketInfo {
-  const delta = s.cur.crushMin - s.base.crushMin;
-  const active = !!s.whatIf;
-  const status: BucketStatus = active && delta > 5 ? 'act' : active ? 'watch' : 'safe';
+  const observed = s.observed && !isObservedEmpty(s.observed) ? describeSpec(s.observed).label : null;
+  // a manual what-if preview (WhatIfBar) counts too, while it's being tested, even with nothing
+  // actually reported — real observed conditions take the label when both happen to be active.
+  // Status is read off the currently-shown evening's own dangerous minutes, not a delta against
+  // an unrelated baseline — `cur` already reflects whichever plan is in force under this
+  // condition, so comparing it to the plain do-nothing evening would conflate "how bad is the
+  // weather" with "how good is the plan."
+  const label = observed || s.whatIf?.label || null;
+  const status: BucketStatus = !label ? 'safe' : s.cur.crushMin > 20 ? 'act' : 'watch';
   return {
     id: 'weather',
     label: 'Weather & delays',
     status,
     coverage: 'simulated',
-    headline: active ? `${s.whatIf!.label} — ${delta > 0 ? `+${delta} dangerous min vs. plain evening` : 'no worse than the plain evening yet'}.` : 'No rain, rail failure or delay observed right now.',
-    risks: active ? [`${s.whatIf!.label} is applied to the rest of the evening.`, `Dangerous minutes vs. the plain evening: ${delta >= 0 ? '+' : ''}${delta}.`] : ['Nothing observed. Log a rain, rail-delay or gate-delay report to test it.'],
+    headline: label ? `${label} — applied to the rest of the evening.` : 'No rain, rail failure or delay observed right now.',
+    risks: label
+      ? [`${label} is applied to the rest of the evening.`, `Dangerous minutes in the evening now shown: ${s.cur.crushMin}.`]
+      : ['Nothing observed. Log a rain, rail-delay or gate-delay report to test it.'],
   };
 }
 

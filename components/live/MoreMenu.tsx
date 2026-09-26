@@ -11,6 +11,7 @@ import { runRedTeamFor, store, type Drawer } from '@/lib/console';
 
 const ITEMS: { label: string; sub: string; drawer?: Drawer; href?: string; action?: 'redteam' }[] = [
   { label: 'What changed (Ravi & the ghost)', sub: 'One attendee, do-nothing vs. the plan', drawer: 'report' },
+  { label: 'Report from the ground', sub: 'Rail delay, weather, gate counts…', drawer: 'observe' },
   { label: 'Test a what-if', sub: 'Rain, rail failure, a delayed show…', drawer: 'whatif' },
   { label: 'Stress test (Red Team)', sub: 'Survives how many of 12 rough nights?', action: 'redteam' },
   { label: 'How long each move works', sub: 'Decision windows, one lever at a time', drawer: 'board' },

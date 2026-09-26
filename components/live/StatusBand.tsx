@@ -18,7 +18,7 @@ const COPY = {
 };
 
 export default function StatusBand() {
-  const s = useSlice(store, (s) => ({ status: opsStatus(s), approved: s.approved, board: !!s.board }));
+  const s = useSlice(store, (s) => ({ status: opsStatus(s), approved: s.approved, approvedStatus: s.approvedStatus, board: !!s.board }));
   if (!s.board)
     return (
       <Band tone="idle">
@@ -27,12 +27,17 @@ export default function StatusBand() {
       </Band>
     );
   const c = COPY[s.status];
+  const sub = s.approved
+    ? s.approvedStatus === 'stopped-working'
+      ? 'What you did stopped working — a new move is ready.'
+      : `In force since ${clock(s.approved.tick)}.`
+    : c.sub;
   return (
     <Band tone={c.tone}>
       <span className="font-display text-[40px] leading-none tracking-tight" style={{ color: c.tone === 'safe' ? 'var(--color-safe)' : c.tone === 'danger' ? 'var(--color-danger-soft)' : 'var(--color-brass)' }}>
         {c.word}
       </span>
-      <span className="text-[14px] font-medium text-text">{s.approved ? `In force since ${clock(s.approved.tick)}.` : c.sub}</span>
+      <span className="text-[14px] font-medium text-text">{sub}</span>
     </Band>
   );
 }

@@ -9,6 +9,7 @@ import { Button, cx, Delta, Kicker, Pill, Row } from '@/components/ui';
 import type { BucketStatus } from '@/lib/buckets';
 import WhatIfBar from './WhatIfBar';
 import { ordersFor, OrdersPanel } from './OrdersPanel';
+import ReportPanel from '@/components/live/ReportPanel';
 
 function Shell({ title, sub, children, wide }: { title: ReactNode; sub?: ReactNode; children: ReactNode; wide?: boolean }) {
   return (
@@ -517,6 +518,15 @@ function LiveOrdersDrawer() {
   );
 }
 
+/** More menu / header "Report" button → the ground-truth input the monitor loop reacts to. */
+function ObserveDrawer() {
+  return (
+    <Shell title="Report from the ground" sub="Rail delay, weather, gate scan counts, hotel checkouts — whatever staff are actually seeing. Pravaah locks the past and re-runs the rest of the evening under it, then re-ranks what's worth doing.">
+      <ReportPanel />
+    </Shell>
+  );
+}
+
 export default function Drawers() {
   const d = useSlice(store, (s) => s.drawer);
   if (d === 'redteam') return <RedTeamDrawer />;
@@ -529,5 +539,6 @@ export default function Drawers() {
   if (d === 'bucket') return <BucketDrawer />;
   if (d === 'whatif') return <WhatIfDrawer />;
   if (d === 'liveOrders') return <LiveOrdersDrawer />;
+  if (d === 'observe') return <ObserveDrawer />;
   return null;
 }

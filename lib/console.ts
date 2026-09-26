@@ -15,7 +15,6 @@ import {
   simulate,
   tracePerson,
   applyWhatIf,
-  buildNight,
   WHATIFS,
   type AblationRow,
   type BoardOption,
@@ -33,13 +32,14 @@ import {
   type WhatIfPatch,
 } from '@/engine';
 import { createStore } from './createStore';
-import type { WhatIfSpec } from './whatifParse';
+import { EMPTY_SPEC, type WhatIfSpec } from './whatifParse';
 import { engine, proxy } from './engineClient';
 import { appendLedger, loadLedger, type LedgerEntry, type LedgerType } from './ledger';
 import { bucketStatuses, type BucketId, type BucketInfo } from './buckets';
+import { buildObservedScenario, firedTripwires, isObservedEmpty, mergeObserved, type ActionState } from './monitor';
 
 export type Mode = 'intro' | 'story' | 'live' | 'replay' | 'free';
-export type Drawer = null | 'about' | 'ledger' | 'report' | 'board' | 'chain' | 'redteam' | 'orders' | 'deck' | 'leverWhy' | 'bucket' | 'whatif' | 'liveOrders';
+export type Drawer = null | 'about' | 'ledger' | 'report' | 'board' | 'chain' | 'redteam' | 'orders' | 'deck' | 'leverWhy' | 'bucket' | 'whatif' | 'liveOrders' | 'observe';
 
 export interface PlanSummary {
   chosen: Lever[];
@@ -107,6 +107,24 @@ export interface ConsoleState {
   /** a free-text staff report flagging VIP movement, if one has been logged — a flag, never a
    *  simulated number (VIP has no cohort/gate of its own; see lib/buckets.ts). */
   vipNote: string | null;
+
+  /* ---- monitor loop (Watch -> Detect -> Re-plan -> Ask), lib/monitor.ts ---- */
+  /** the running, merged, clamped patch built from every staff report/chip logged so far */
+  observed: WhatIfSpec;
+  /** sim tick the monitor last actually applied `observed` and re-ranked — gates the periodic cadence */
+  lastMonitorTick: number;
+  monitorBusy: boolean;
+  /** does the plan already in force still deliver what it promised, under what's been observed since? */
+  approvedStatus: 'still-working' | 'stopped-working' | null;
+  /** Red Team "breaks when" factor keys that have already fired a tripwire this evening — a
+   *  tripwire proposes its backup once per factor, not on every monitor tick it stays true */
+  tripwiresFiredKeys: string[];
+  /** proposed levers the previous monitor tick recommended that the newest re-rank dropped —
+   *  surfaced as 'superseded', not silently disappeared */
+  supersededLabels: string[];
+  /** skip vs. a missed deadline both land in `expired`; this remembers which, for actionState() */
+  expiredReason: Record<string, 'skipped' | 'expired'>;
+
   caption: string;
   toast: string;
 }
@@ -152,6 +170,13 @@ function initial(): ConsoleState {
     drawerLever: null,
     drawerBucket: null,
     vipNote: null,
+    observed: EMPTY_SPEC,
+    lastMonitorTick: 0,
+    monitorBusy: false,
+    approvedStatus: null,
+    tripwiresFiredKeys: [],
+    supersededLabels: [],
+    expiredReason: {},
     caption: '',
     toast: '',
   };
@@ -244,6 +269,7 @@ export function tickForward(dtSec: number) {
   patch.tick = t;
   set(patch);
   checkClock();
+  maybeRunMonitor();
 }
 
 function onStop(mode: Mode) {
@@ -317,14 +343,17 @@ export function decisionDeadline(s: ConsoleState = get()): { tick: number; label
 /**
  * Marks the given lever labels expired and re-plans from `atTick` without them — the one place
  * this happens, shared by the automatic tick-driven check below and `skipLever()` (Live Ops), so
- * a manual skip produces exactly the same re-plan as a window closing on its own.
+ * a manual skip produces exactly the same re-plan as a window closing on its own. `reason`
+ * distinguishes the two afterwards, for actionState()'s 'skipped' vs. 'expired'.
  */
-function expireLevers(labels: string[], atTick: number) {
+function expireLevers(labels: string[], atTick: number, reason: 'skipped' | 'expired' = 'expired') {
   if (!labels.length) return;
   const s = get();
   const expired = [...s.expired, ...labels.filter((l) => s.expired.indexOf(l) < 0)];
   if (expired.length === s.expired.length) return; // nothing new
-  set({ expired, replanBusy: true });
+  const expiredReason = { ...s.expiredReason };
+  labels.forEach((l) => (expiredReason[l] = reason));
+  set({ expired, expiredReason, replanBusy: true });
   log('clock_expired', `The decision window closed at ${clock(atTick)} for: ${labels.join('; ')}.`, { closing: labels, tick: atTick });
   engine()
     .replan(s.scn, atTick, expired)
@@ -347,17 +376,35 @@ export type OpsStatus = 'calm' | 'watch' | 'act';
  * never disagree about how much trouble the evening is in.
  */
 export function opsStatus(s: ConsoleState = get()): OpsStatus {
-  if (s.approved) return 'calm';
+  if (s.approved) return s.approvedStatus === 'stopped-working' && s.replan ? 'act' : 'calm';
   if (s.replan || s.replanBusy) return 'act';
   const d = decisionDeadline(s);
   if (!d) return 'calm';
   return d.tick - s.tick <= 15 ? 'act' : 'watch';
 }
 
-/** the levers actually worth showing right now: what's in force, else Plan B, else the recommendation */
+/** the levers actually worth showing right now: what's in force, else Plan B, else the
+ *  recommendation. Once a plan is approved this normally stays fixed on it — but if the monitor
+ *  loop has found that approved plan stopped working (approvedStatus, set by runMonitorTick()) and
+ *  produced a fresh replan under what's actually been observed since, that fresh replan is a new
+ *  thing to ask about, so it takes over (never silently replacing what's already in force without
+ *  saying so — see approvedStatus and the "stopped working" badge on the action card). */
 export function opsLevers(s: ConsoleState = get()): Lever[] {
-  if (s.approved) return s.approved.ivs as Lever[];
+  if (s.approved && !(s.approvedStatus === 'stopped-working' && s.replan)) return s.approved.ivs as Lever[];
+  if (s.approved && s.replan) return s.replan.chosen;
   return selectedPlan(s)?.chosen || [];
+}
+
+/** One action's current lifecycle state (brief: proposed / accepted / skipped / expired /
+ *  superseded / still-working / stopped-working — show only the current one). still-working /
+ *  stopped-working describe the plan already in force as a whole (approvedStatus), not a single
+ *  lever, so they're read separately by the UI; this covers the rest. */
+export function actionState(label: string, s: ConsoleState = get()): ActionState {
+  if (s.approved && s.approved.ivs.some((iv) => (iv as Lever).label === label)) return 'accepted';
+  if (s.expiredReason[label] === 'skipped') return 'skipped';
+  if (s.expired.indexOf(label) >= 0) return 'expired';
+  if (s.supersededLabels.indexOf(label) >= 0) return 'superseded';
+  return 'proposed';
 }
 
 function checkClock() {
@@ -366,7 +413,121 @@ function checkClock() {
   const d = decisionDeadline(s);
   if (!d || s.tick < d.tick) return;
   const closing = (s.board || []).filter((o) => !o.useless && o.deadlineTick <= s.tick && s.expired.indexOf(o.label) < 0).map((o) => o.label);
-  expireLevers(closing, Math.floor(s.tick));
+  expireLevers(closing, Math.floor(s.tick), 'expired');
+}
+
+const MONITOR_INTERVAL_MIN = 15;
+/** the periodic side of the loop: called every simulated frame, only actually does anything once
+ *  every MONITOR_INTERVAL_MIN sim-minutes (or immediately, forced, right after a new report —
+ *  see reportObserved()) and only while there's something observed to react to. */
+function maybeRunMonitor() {
+  const s = get();
+  if (s.mode !== 'live' || s.monitorBusy || isObservedEmpty(s.observed)) return;
+  if (s.tick - s.lastMonitorTick < MONITOR_INTERVAL_MIN) return;
+  runMonitorTick();
+}
+
+/**
+ * Watch -> Detect -> Re-plan -> Ask, one pass. Builds the scenario patch from everything observed
+ * so far (lib/monitor.ts's buildObservedScenario — the same buildNight() a manual what-if uses,
+ * with every capacity change clamped to start no earlier than `now`), then: (1) checks Red Team's
+ * pre-armed tripwires against it — a firing tripwire installs Red Team's own backup as Plan B
+ * directly, no fresh optimiser run needed, and is never auto-approved; (2) otherwise asks the
+ * worker to re-rank the recommendation under the new conditions, same replan() the decision clock
+ * already uses; (3) if a plan is already in force, re-simulates it (unchanged, at its own approved
+ * tick) under the new conditions to see whether it still delivers what it promised.
+ */
+export function runMonitorTick() {
+  const s = get();
+  if (s.monitorBusy) return;
+  const tick = Math.floor(s.tick);
+  const { scn, opts } = buildObservedScenario(s.scn, s.observed, tick);
+  const waits = probeWaits(scn, opts);
+
+  // Watch: whatever's on screen (map, six dots, readouts) reflects what's actually been observed
+  // from now on — whichever plan is in force (or proposed, if none is), re-run under it.
+  const activeIvs = s.approved ? s.approved.ivs : opsLevers(s);
+  const shown = simulate(scn, activeIvs, { ...opts, waits });
+  set({
+    cur: shown,
+    ghost: s.base,
+    curLabel: (s.approved ? s.approved.name : selectedPlan(s)?.name || 'If you do nothing') + (isObservedEmpty(s.observed) ? '' : ' · observed conditions'),
+    raviCur: tracePerson(scn, shown, personPath(scn, shown), RAVI.release),
+    raviGhost: tracePerson(s.scn, s.base, personPath(s.scn, s.base), RAVI.release),
+  });
+
+  // (1) tripwires — only factors that haven't already fired once this evening
+  const fired = firedTripwires(s.redTeam, s.observed).filter((t) => s.tripwiresFiredKeys.indexOf(t.key) < 0);
+  if (fired.length && s.redTeam?.backup) {
+    const b = s.redTeam.backup;
+    const orig = recommended(get());
+    const lostMin = b.crush - (orig ? orig.crushMin : 0);
+    const lostRupees = Math.max(0, b.rupees - (orig ? orig.rupees : 0));
+    const before = opsLevers(get()).map((l) => l.label);
+    const after = b.chosen.map((l) => l.label);
+    set({
+      replan: { chosen: b.chosen, crushMin: b.crush, rupees: b.rupees, missed: b.missed, atTick: tick, lostMin, lostRupees },
+      supersededLabels: before.filter((l) => after.indexOf(l) < 0),
+      tripwiresFiredKeys: [...s.tripwiresFiredKeys, ...fired.map((t) => t.key)],
+      lastMonitorTick: tick,
+      selected: 'Balanced',
+    });
+    fired.forEach((t) =>
+      log('tripwire_fired', `Tripwire: ${t.label} — Red Team already found this breaks the plan ${Math.round(t.failRate * 100)}% of the time. Proposing the backup it found for the worst night.`, {
+        key: t.key,
+        failRate: t.failRate,
+        backup: after,
+      }),
+    );
+    const what = fired.length === 1 ? fired[0].label : fired.map((t) => t.label).join(', ');
+    caption(`Observed: ${what}. Pravaah is proposing the backup Red Team already found for a night like this. It has not been approved.`);
+  }
+
+  // (2) re-rank the recommendation under the observed conditions (skip if a tripwire just replaced it)
+  if (!fired.length) {
+    set({ monitorBusy: true });
+    engine()
+      .replan(scn, tick, s.expired, opts)
+      .then((r) => {
+        const before = opsLevers(get()).map((l) => l.label);
+        const after = r.chosen.map((l) => l.label);
+        set({
+          replan: { chosen: r.chosen, crushMin: r.crushMin, rupees: r.rupees, missed: r.missed, atTick: tick, lostMin: 0, lostRupees: 0 },
+          supersededLabels: before.filter((l) => after.indexOf(l) < 0),
+          lastMonitorTick: tick,
+          monitorBusy: false,
+          selected: 'Balanced',
+        });
+        log('plan_recommended', `Re-ranked from ${clock(tick)} under what's been observed: ${after.join('; ') || 'nothing more to do'}.`, { chosen: after, crushMin: r.crushMin, observed: s.observed });
+      })
+      .catch(() => set({ monitorBusy: false, lastMonitorTick: tick }));
+  }
+
+  // (3) does the plan already in force still hold up? `shown` above already IS that recheck,
+  // since activeIvs === s.approved.ivs whenever a plan is in force.
+  if (s.approved) {
+    const worse = shown.crushMin - s.approved.result.crushMin;
+    const status: ConsoleState['approvedStatus'] = worse > 3 ? 'stopped-working' : 'still-working';
+    if (status !== s.approvedStatus) {
+      set({ approvedStatus: status });
+      if (status === 'stopped-working') log('action_stopped_working', `"${s.approved.name}" stopped working: ${s.approved.result.crushMin} → ${shown.crushMin} dangerous minutes under what's now been observed.`, { was: s.approved.result.crushMin, now: shown.crushMin });
+    }
+  }
+}
+
+/** Log an observed report (a chip or a parsed staff-report sentence) and react to it immediately —
+ *  the periodic MONITOR_INTERVAL_MIN cadence above is the safety net for "nothing new was reported
+ *  but the clock moved on"; a fresh report should not have to wait for it. */
+export function reportObserved(patch: Partial<WhatIfSpec>, note: string) {
+  const s = get();
+  const merged = mergeObserved(s.observed, patch);
+  set({ observed: merged });
+  log('staff_report', note, { patch, mergedInto: merged });
+  runMonitorTick();
+}
+export function clearObserved() {
+  set({ observed: EMPTY_SPEC });
+  log('staff_report', 'Observed conditions cleared by staff — back to the plain evening.', {});
 }
 
 /**
@@ -392,13 +553,13 @@ export function openLeverWhy(label: string) {
  *  pattern as planCache.ts): bucketStatuses() builds a fresh array/objects on every call, and
  *  useSlice()'s cache only recognises "unchanged" by comparing references, so without this a
  *  render where nothing actually changed would still hand back new objects and loop forever. */
-let bucketsCache: { cur: SimResult; base: SimResult; whatIf: ConsoleState['whatIf']; vipNote: string | null; t: number; out: BucketInfo[] } | null = null;
+let bucketsCache: { cur: SimResult; base: SimResult; whatIf: ConsoleState['whatIf']; observed: WhatIfSpec; vipNote: string | null; t: number; out: BucketInfo[] } | null = null;
 export function liveBuckets(s: ConsoleState = get()): BucketInfo[] {
   const t = viewTick(s);
   const c = bucketsCache;
-  if (c && c.cur === s.cur && c.base === s.base && c.whatIf === s.whatIf && c.vipNote === s.vipNote && c.t === t) return c.out;
-  const out = bucketStatuses({ scn: s.scn, cur: s.cur, base: s.base, whatIf: s.whatIf, vipNote: s.vipNote }, t);
-  bucketsCache = { cur: s.cur, base: s.base, whatIf: s.whatIf, vipNote: s.vipNote, t, out };
+  if (c && c.cur === s.cur && c.base === s.base && c.whatIf === s.whatIf && c.observed === s.observed && c.vipNote === s.vipNote && c.t === t) return c.out;
+  const out = bucketStatuses({ scn: s.scn, cur: s.cur, base: s.base, whatIf: s.whatIf, observed: s.observed, vipNote: s.vipNote }, t);
+  bucketsCache = { cur: s.cur, base: s.base, whatIf: s.whatIf, observed: s.observed, vipNote: s.vipNote, t, out };
   return out;
 }
 export function openBucket(id: BucketId) {
@@ -414,7 +575,7 @@ export function setVipNote(note: string | null) {
 export function skipLever(label: string) {
   const s = get();
   if (s.approved || s.replanBusy || s.expired.indexOf(label) >= 0) return;
-  expireLevers([label], Math.floor(s.tick));
+  expireLevers([label], Math.floor(s.tick), 'skipped');
 }
 
 /** approve: the plan is applied from NOW — late decisions only reach people who have not left yet */
@@ -474,6 +635,33 @@ export function replayOutcome() {
   set({ tick: Math.max(200, Math.min(s.approved.tick, 270)), playing: true, speed: 7, stopAt: 372, mode: 'replay', peek: null });
 }
 
+/**
+ * Approve the monitor loop's fresh replan once what's already in force has stopped working
+ * (approvedStatus, set by runMonitorTick()). Deliberately NOT the same code path as approve():
+ * that one jumps into a canned replay of the outcome (right for a first, pre-event approval);
+ * this one is a live, mid-event decision — it stays in 'live' mode, at the real clock, and simply
+ * replaces what's in force with the new plan, at NOW, under whatever's actually been observed.
+ */
+export function approveReplacement() {
+  const s = get();
+  if (!s.approved || !s.replan) return;
+  const at = Math.floor(s.tick);
+  const { scn, opts } = buildObservedScenario(s.scn, s.observed, at);
+  const waits = probeWaits(scn, opts);
+  const ivs = s.replan.chosen.map((c) => retime(c, at, scn));
+  const result = simulate(scn, ivs, { ...opts, waits });
+  const approved: Approved = { name: 'Plan B', tick: at, ivs, result };
+  set({ approved, approvedStatus: 'still-working', replan: undefined, supersededLabels: [], cur: result, ghost: s.base, curLabel: 'Plan B (updated)' });
+  caption(`Updated the plan at ${clock(at)}: ${s.approved.result.crushMin} → ${result.crushMin} dangerous minutes.`);
+  log('plan_approved', `Approved the updated plan at ${clock(at)} — the earlier one had stopped working: ${result.crushMin} dangerous minutes, ₹${result.rupees}.`, {
+    name: 'Plan B',
+    at,
+    levers: ivs.map((c) => c.label),
+    crushMin: result.crushMin,
+    rupees: result.rupees,
+  });
+}
+
 /* ---------------- what-if ---------------- */
 export function runWhatIf(id: WhatIfId | 'custom', custom?: { label: string; say: string; patch: WhatIfPatch }) {
   const s = get();
@@ -498,17 +686,7 @@ export function runWhatIf(id: WhatIfId | 'custom', custom?: { label: string; say
 /** a typed question, parsed into a validated spec (LLM or word matching), run through the same engine */
 export function runWhatIfSpec(spec: WhatIfSpec, label: string, say: string, source: string) {
   const s = get();
-  const { scn, opts } = buildNight(s.scn, {
-    turnout: 1 + spec.turnoutPct / 100,
-    rain: spec.rain,
-    railFail: spec.railFailAt != null ? Math.max(0, spec.railFailAt - s.scn.t0Min) : null,
-    gatesLate: spec.gatesLateMin,
-    slowLanes: spec.slowLanes,
-  });
-  if (spec.showDelayMin) {
-    scn.showStartTick += spec.showDelayMin;
-    scn.cohorts.forEach((c) => (c.mean += Math.round(spec.showDelayMin * 0.6)));
-  }
+  const { scn, opts } = buildObservedScenario(s.scn, spec, 0);
   const waits = probeWaits(scn, opts);
   const none = simulate(scn, [], { ...opts, waits });
   const ivs = s.approved ? s.approved.ivs : selectedPlan(s)?.chosen || [];

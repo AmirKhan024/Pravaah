@@ -40,8 +40,10 @@ export interface RedTeamResult {
   survived: number;
   total: number;
   worst: RedTeamNight;
-  /** factor values under which the plan fails at least half the time */
-  breaksWhen: { label: string; failRate: number; n: number }[];
+  /** factor values under which the plan fails at least half the time. `key`/`value` are the raw
+   *  RedTeamFactors this label was rendered from — kept alongside the label so a tripwire can
+   *  match a real observed condition against it programmatically, not by parsing English text. */
+  breaksWhen: { label: string; failRate: number; n: number; key: keyof RedTeamFactors; value: RedTeamFactors[keyof RedTeamFactors] }[];
   backup: { chosen: Lever[]; crush: number; missed: number; rupees: number } | null;
   /** the 12-night stress batch view (same nights as the decision window) */
   headline: { survived: number; total: number };
@@ -131,7 +133,7 @@ export function runRedTeam(base: Scenario, plan: Lever[], onProgress?: (f: numbe
       if (!lab) continue;
       const sub = nights.filter((n) => JSON.stringify(n.f[d.key]) === vs);
       const failRate = sub.filter((n) => !n.survived).length / sub.length;
-      if (failRate >= 0.5) breaksWhen.push({ label: lab, failRate, n: sub.length });
+      if (failRate >= 0.5) breaksWhen.push({ label: lab, failRate, n: sub.length, key: d.key, value: v });
     }
   }
   breaksWhen.sort((a, b) => b.failRate - a.failRate);

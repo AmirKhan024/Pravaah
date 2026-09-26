@@ -4,6 +4,94 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-26 — Live control room, slices (b)+(c): the monitor loop, action lifecycle, tripwires
+
+Watch → Detect → Re-plan → Ask, built as a thin layer on the engine's existing "full re-simulate,
+future-only clamped" pattern (no engine rewrite — see the 2026-09-26 DECISIONS.md entry). Built
+and verified together with (c) since a fired tripwire is just step 1 of the same monitor tick.
+
+**Changed**
+- **`lib/monitor.ts`** (new): pure logic only. `mergeObserved()` folds a new staff report into the
+  running `WhatIfSpec`-shaped observed state, severity-preserving (a milder later report never
+  un-reports an earlier, worse one). `buildObservedScenario()` factors out the exact `buildNight()`
+  mapping `runWhatIfSpec()` already used, plus "lock the past": every capacity patch is clamped to
+  start no earlier than the tick it's applied from — `retime()`/`fracRemaining()`'s own principle,
+  now applied to an observed-conditions patch, not just a single lever. `firedTripwires()` matches
+  real observed conditions against Red Team's own `breaksWhen` factors (engine/redTeam.ts gained
+  `key`/`value` on each `breaksWhen` entry so this can compare programmatically, not by parsing
+  English labels) — 10 tests in `lib/__tests__/monitor.test.ts`.
+- **`lib/console.ts`**: `observed`, `lastMonitorTick`, `monitorBusy`, `approvedStatus`,
+  `tripwiresFiredKeys`, `supersededLabels`, `expiredReason` — new state. `reportObserved()` /
+  `clearObserved()` (a report merges into `observed`, logs it, runs one monitor pass immediately).
+  `runMonitorTick()`: rebuilds the scenario from everything observed, re-runs whichever plan is
+  currently shown (approved, else proposed) so the **map and all six buckets actually reflect what
+  staff reported** (see the bug below — this wasn't true in the first version), checks tripwires,
+  and — only if none fired — asks the worker to re-rank under the new conditions (`engine().replan`,
+  same call the decision clock already uses). If a plan is in force, the same re-run also answers
+  "does it still work": `approvedStatus` flips to `stopped-working` when it's ≥3 dangerous minutes
+  worse than what was promised, logged as `action_stopped_working`. `maybeRunMonitor()` runs this
+  automatically every 15 sim-minutes even with no new report, driven off the same `tickForward()`
+  that already drives `checkClock()`. `opsLevers()`/`opsStatus()` extended (additively — existing
+  `opsStatus.test.ts` cases all pass unchanged) so a stopped-working plan's fresh replan actually
+  surfaces as the next thing to ask about, instead of the UI silently freezing on the old approval
+  forever. `actionState()` reports proposed/accepted/skipped/expired/superseded from state that
+  already existed (`expiredReason` is new — skip vs. a missed deadline used to be indistinguishable).
+  `approveReplacement()` — deliberately **not** the same path as `approve()`: that one jumps into a
+  canned replay (right for a first, pre-event approval); this one stays live, at the real clock,
+  and swaps in the new plan at *now*.
+- **`app/api/llm/report/route.ts`** (new): a typed staff report → the same clamped `WhatIfSpec`
+  `whatifParse.ts` already produces for what-ifs (reused, not reimplemented — same `sanitizeSpec`/
+  `localParse`), with its own system prompt ("describes something happening now," not a hypothetical
+  to test) and its own offline fallback.
+- **`components/live/ReportPanel.tsx`** (new): the brief's "chips + typed text" input — six instant
+  chips (rain, rail delay, gates late, more/fewer people, slow lanes) plus a typed field through the
+  endpoint above. **`Drawers.tsx`** gained the `observe` drawer wrapping it; **`Live.tsx`** gained a
+  header "Report" button (one click, not buried in More — this is a first-class input, per the
+  brief) alongside a More-menu entry. **`ActionsDue.tsx`**: the action card now reads `actionState()`
+  instead of raw `!!s.approved`, shows a "stopped working — new move" badge, and routes its button
+  to `approveReplacement()` instead of `approve()` in that case. **`StatusBand.tsx`**: the one
+  sentence says "What you did stopped working — a new move is ready" instead of silently staying on
+  "In force since HH:MM."
+
+**A real bug found live, not before.** The first version of `runMonitorTick()` updated the
+recommendation (`replan`) but never touched `cur` — so after reporting rain and watching a tripwire
+fire correctly in the ticker, the Weather & delays dot still read "No rain… observed right now,"
+because the six buckets (and the map) read `cur`/`base`, which hadn't moved. Fixed by having the
+monitor tick re-simulate whichever plan is actually in force/proposed under the observed patch and
+set `cur`/`ghost`/`raviCur` from that — the map and every dot now genuinely show the evening staff
+just reported, not a stale one. Caught the same way as slice (a)'s bug: driving the real thing in a
+headless browser (Red Team → report rain → watch the tripwire fire in the ticker → check the dot),
+not by reading the diff.
+
+**A second issue, caught in the same pass, fixed before it shipped:** the Weather bucket's first
+draft compared `cur.crushMin` (which, once a plan is proposed, already includes that plan's fix)
+against the plain do-nothing baseline — conflating "how bad is the weather" with "how good is the
+plan," e.g. reading strongly *better* than baseline right after reporting heavy rain, because a
+good plan was already selected. Changed to read the currently-shown evening's own dangerous minutes
+directly, no baseline delta.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 69/69 (10 new in `monitor.test.ts`; `opsStatus.test.ts`'s
+  existing cases untouched by the `opsStatus()`/`opsLevers()` extension).
+- Live, via Playwright against `npm run dev` (`NEXT_PUBLIC_DEMO_OFFLINE=1`): ran the real Red Team
+  search (192 nights) to get a real `backup`; reported "Rain has started" via the chip; the ticker
+  read "Tripwire: heavy rain — Red Team already found this breaks the plan 78% of the time.
+  Proposing the backup it found for the worst night," the status band flipped to Act now, and the
+  Weather & delays dot correctly went to Watch with "Simulated" and the real crush-minute count —
+  zero console errors throughout. Separately: approved a plan (a real Telegram send landed in the
+  live ops chat, confirming this also works for a plan approved mid-loop, not just the first one),
+  reported rain + a rail delay + a gate delay together, watched `approvedStatus` flip to
+  `stopped-working` with the "stopped working — new move" badge and Act now, clicked "Do it" on the
+  replacement, and confirmed it went back to Calm ("In force since 18:36") with the new lever
+  showing "Done · sent to ops" — the loop closes correctly, decision after decision, for the rest of
+  the evening.
+
+**Still open** — slice (d) dynamic Telegram message types (new action / expiring / status changed /
+tripwire fired / stopped working / decision recorded, with Groq wording reusing the placeholder
+scheme) and (e) missing scenarios. Continuing now.
+
+---
+
 ## 2026-09-26 — Live control room, slice (a): the calm `/live` screen + More menu
 
 Starting the "static plan → calm live control room" brief. Full audit and chosen approach are in

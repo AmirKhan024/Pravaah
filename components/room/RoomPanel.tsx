@@ -4,9 +4,12 @@ import { useEffect, useState } from 'react';
 import { useSlice } from '@/lib/createStore';
 import { closeRoom, resetRoomVotes, roomStore, runWithRoom, sendToRoom, simulateRoom } from '@/lib/room';
 import { store } from '@/lib/console';
-import { tallyVotes } from '@/lib/roomVotes';
+import { MIN_RESPONSES_FOR_OVERRIDE, RESPONSE_TIME_MIN_SAMPLE, STRONG_SAMPLE_THRESHOLD } from '@/lib/roomResponses';
+import { observedAcceptance, responseBreakdown, responseTiming, sumResponseCounts, tallyVotes } from '@/lib/roomVotes';
 import { comma } from '@/engine';
 import { Button, cx, Delta, Logo } from '@/components/ui';
+
+const pct = (n: number, total: number) => (total ? Math.round((n / total) * 100) : 0);
 
 function useNow(ms = 250) {
   const [now, setNow] = useState(() => Date.now());
@@ -33,7 +36,11 @@ export default function RoomPanel() {
   // one shared definition of "who could vote" (lib/roomVotes.ts) — this total always matches the
   // "N votes" footnote in the result card below, because both read it from the same place.
   const tally = snap ? tallyVotes(snap) : { yes: 0, no: 0, total: 0, eligible: 0 };
-  const byCohort = (id: string) => snap?.participants.filter((p) => p.cohort === id).length || 0;
+  const joinedByCohort = (id: string) => snap?.participants.filter((p) => p.cohort === id).length || 0;
+  const responsesByCohort = snap ? responseBreakdown(snap, now) : {};
+  const totals = sumResponseCounts(responsesByCohort);
+  const settled = totals.accepted + totals.declined + totals.alreadyMoved + totals.tooLate + totals.ignored;
+  const timing = snap ? responseTiming(snap) : { medianMs: null, n: 0 };
 
   return (
     <div className="fixed inset-0 z-50 flex overflow-y-auto bg-ink/97 py-8 backdrop-blur-sm fadein" role="dialog" aria-label="The Room">
@@ -77,7 +84,7 @@ export default function RoomPanel() {
               {snap?.cohorts.map((co) => (
                 <div key={co.id} className="flex items-center justify-between rounded-lg border border-line-soft px-3 py-2 text-[12.5px]">
                   <span className="truncate text-dim">{co.label}</span>
-                  <span className="num font-semibold">{byCohort(co.id)}</span>
+                  <span className="num font-semibold">{joinedByCohort(co.id)}</span>
                 </div>
               ))}
             </div>
@@ -89,13 +96,59 @@ export default function RoomPanel() {
                 <span className="kicker !mb-0 !text-brass">{left > 0 ? 'Message sent · phones are deciding' : 'Voting closed'}</span>
                 <span className="num text-[28px] font-semibold text-brass">{left > 0 ? `0:${String(left).padStart(2, '0')}` : '0:00'}</span>
               </div>
-              <div className="mt-3 flex items-center gap-3">
-                <div className="h-3 flex-1 overflow-hidden rounded-full bg-line">
-                  <div className="h-full bg-safe transition-[width] duration-500" style={{ width: tally.total ? (tally.yes / tally.total) * 100 + '%' : '0%' }} />
-                </div>
-                <span className="num text-[14px]">
-                  <b className="text-safe">{tally.yes}</b> yes · <b className="text-danger-soft">{tally.no}</b> no
-                </span>
+              <div className="mt-4 grid grid-cols-5 gap-1.5 text-center">
+                {(
+                  [
+                    ['Accepted', totals.accepted, 'text-safe'],
+                    ['Declined', totals.declined, 'text-danger-soft'],
+                    ['Already moved', totals.alreadyMoved, 'text-safe'],
+                    ['Too late', totals.tooLate, 'text-dim'],
+                    ['No response', totals.ignored, 'text-dim'],
+                  ] as [string, number, string][]
+                ).map(([label, n, cls]) => (
+                  <div key={label} className="rounded-lg border border-line-soft/60 px-1 py-2">
+                    <div className={cx('num text-[19px] font-semibold', cls)}>{n}</div>
+                    <div className="mt-0.5 text-[10px] leading-tight text-dim">
+                      {label}
+                      {settled ? ` · ${pct(n, settled)}%` : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 text-[12.5px] text-dim">
+                {timing.n >= RESPONSE_TIME_MIN_SAMPLE && timing.medianMs != null ? (
+                  <>
+                    Median response time <b className="num text-text">{(timing.medianMs / 1000).toFixed(1)}s</b>
+                  </>
+                ) : (
+                  'Waiting for more responses to show a response time.'
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {bc && Object.keys(responsesByCohort).length ? (
+            <div className="rounded-2xl border border-line bg-panel/80 p-5">
+              <span className="kicker !mb-3">Cohort behaviour</span>
+              <div className="flex flex-col gap-2">
+                {Object.entries(responsesByCohort).map(([id, c]) => {
+                  const label = snap?.cohorts.find((x) => x.id === id)?.label || id;
+                  const { n, rate } = observedAcceptance(responsesByCohort, id);
+                  return (
+                    <div key={id} className="flex items-center justify-between rounded-lg border border-line-soft px-3 py-2 text-[12.5px]">
+                      <span className="truncate text-dim">{label}</span>
+                      <span className="num">
+                        {c.joined} joined · <span className="text-safe">{c.accepted + c.alreadyMoved}</span> compliant · <span className="text-danger-soft">{c.declined + c.tooLate + c.ignored}</span> not
+                        {n ? (
+                          <>
+                            {' '}
+                            · <b className="text-brass">{Math.round(rate * 100)}%</b> estimate
+                          </>
+                        ) : null}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}
@@ -111,7 +164,8 @@ export default function RoomPanel() {
                 </span>
               </div>
               <div className="mt-2 text-[12px] text-dimmer">
-                {r.result.votes} votes. Groups with fewer than 2 votes keep the model&apos;s estimate. This is a small-sample check on a hand-set assumption, and we say so.
+                {r.result.votes} settled responses. Below {MIN_RESPONSES_FOR_OVERRIDE} the room carries no weight against the model; it only carries full weight at {STRONG_SAMPLE_THRESHOLD} or more.
+                This is a small-sample check on a hand-set assumption, and we say so.
               </div>
             </div>
           ) : null}

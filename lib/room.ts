@@ -8,7 +8,10 @@ import { clockFor, comma, mulberry32, personPath, RAVI, simulate, tracePerson, t
 import { approve, log, store as consoleStore, toast } from './console';
 import { createStore } from './createStore';
 import { crowdMessage, devaDigits, nudgeVars } from './messages';
-import { tallyByCohort, tallyVotes } from './roomVotes';
+import { deriveRoomCohortProfile } from './roomProfiles';
+import { blendWeight, classifyServerResponse, COMPLIANCE_WEIGHT, deriveChoice, type GroupResponse, type ResponseKind } from './roomResponses';
+import { observedAcceptance, responseBreakdown, sumResponseCounts } from './roomVotes';
+import { seededGroupSize } from './seededGroup';
 import { supabaseBrowser } from './supabase';
 import type { RoomCohort, RoomMessage, RoomOutcome, RoomSnapshot } from './roomTypes';
 
@@ -34,7 +37,7 @@ const BLURB: Record<string, string> = {
 };
 
 export function roomCohorts(scn: Scenario): RoomCohort[] {
-  return scn.cohorts.filter((c) => c.alt).map((c) => ({ id: c.id, label: c.label, size: c.size, blurb: BLURB[c.id] || c.label.toLowerCase() }));
+  return scn.cohorts.filter((c) => c.alt).map((c) => ({ id: c.id, label: c.label, size: c.size, blurb: BLURB[c.id] || c.label.toLowerCase(), ...deriveRoomCohortProfile(scn, c) }));
 }
 
 let poll: ReturnType<typeof setInterval> | undefined;
@@ -141,7 +144,33 @@ export async function sendToRoom(seconds = 25) {
   log('orders_sent', `Sent the crowd message to the room (${Object.keys(messages).length} groups).`, { cohorts: Object.keys(messages) });
 }
 
-/** fallback: fake phones that vote with the model's own probability (seeded, repeatable) */
+/**
+ * Illustrative, seeded (not `Math.random()`) distribution over response kinds, built off the
+ * model's own acceptance probability `p` for that cohort — a fixed, documented split, not a
+ * second acceptance model. accept/already_moved scale with p; decline/ignore/too_late scale with
+ * (1-p). This is what simulated phones draw from; a real phone's answer is never drawn, only sent.
+ */
+function drawResponse(rnd: () => number, p: number): ResponseKind {
+  const u = rnd();
+  const accept = p * 0.75;
+  const alreadyMoved = accept + p * 0.25;
+  const decline = alreadyMoved + (1 - p) * 0.55;
+  const ignore = decline + (1 - p) * 0.3;
+  if (u < accept) return 'accept';
+  if (u < alreadyMoved) return 'already_moved';
+  if (u < decline) return 'decline';
+  if (u < ignore) return 'ignore';
+  return 'too_late';
+}
+
+/** Compliant responses mostly bring the whole group; non-compliant ones mostly don't — illustrative. */
+function drawGroupResponse(rnd: () => number, response: ResponseKind): GroupResponse {
+  const u = rnd();
+  if (COMPLIANCE_WEIGHT[response] > 0) return u < 0.7 ? 'all' : u < 0.9 ? 'individual' : 'none';
+  return u < 0.6 ? 'none' : u < 0.85 ? 'individual' : 'all';
+}
+
+/** fallback: fake phones that respond with a distribution built off the model's own probability (seeded, repeatable) */
 export async function simulateRoom(n = 24) {
   const s = consoleStore.getState();
   const res = s.approved?.result || s.base;
@@ -151,6 +180,7 @@ export async function simulateRoom(n = 24) {
     const participants = [...(get().snap?.participants || [])];
     const votes = { ...(get().snap?.votes || {}) };
     const total = cohorts.reduce((a, c) => a + c.size, 0);
+    const closesAt = get().snap?.broadcast?.closesAt ?? Infinity;
     for (let i = 0; i < n; i++) {
       let pick = cohorts[0],
         acc = 0;
@@ -163,14 +193,18 @@ export async function simulateRoom(n = 24) {
         }
       }
       const id = 'sim-' + participants.length;
-      participants.push({ id, cohort: pick.id, lang: (['mr', 'hi', 'en'] as Lang[])[i % 3], joinedAt: Date.now(), simulated: true });
-      // a simulated phone can only vote where a real phone could: its cohort must actually have
+      participants.push({ id, cohort: pick.id, lang: (['mr', 'hi', 'en'] as Lang[])[i % 3], joinedAt: Date.now(), simulated: true, groupSize: seededGroupSize(id) });
+      // a simulated phone can only respond where a real phone could: its cohort must actually have
       // received a message in this broadcast. Voting for an un-nudged cohort was the bug that
       // made the live tally (all votes) disagree with the result footnote (nudged-only votes).
       const msg = get().snap?.broadcast?.messages[pick.id];
       if (msg) {
         const p = res.nudgeInfo.find((x) => x.cohort === pick.id)?.p ?? 0.3;
-        votes[id] = { choice: rnd() < p ? 'yes' : 'no', at: Date.now() };
+        const now = Date.now();
+        const drawn = classifyServerResponse(drawResponse(rnd, p), now, closesAt);
+        const groupResponse = drawGroupResponse(rnd, drawn);
+        const delayMs = 1000 + Math.floor(rnd() * 15000);
+        votes[id] = { choice: deriveChoice(drawn), response: drawn, groupResponse, at: now, seenAt: now, respondedAt: now + delayMs, responseDelayMs: delayMs };
       }
     }
     set((st) => ({ snap: st.snap ? { ...st.snap, participants, votes } : null }));
@@ -182,41 +216,71 @@ export async function simulateRoom(n = 24) {
     ids.push(pid);
     await post('join', { pid, lang: (['mr', 'hi', 'en'] as Lang[])[i % 3], simulated: true });
   }
+  // post('join') returns a phoneView, not a room snapshot, so get().snap can still be missing the
+  // participants just joined above (it only updates from a snapshot-shaped response, or whenever
+  // the background poll/Realtime happens to fire) — refresh explicitly so every simulated phone's
+  // cohort is known before deciding who can respond.
+  await refresh();
   const snap = get().snap;
   if (snap?.broadcast) {
-    for (const pid of ids) {
-      const p = snap.participants.find((x) => x.id === pid);
-      // same rule as the offline branch above: only vote where the cohort actually has a message.
-      if (!p || !snap.broadcast.messages[p.cohort]) continue;
-      const pr = res.nudgeInfo.find((x) => x.cohort === p.cohort)?.p ?? 0.3;
-      await post('vote', { pid, choice: rnd() < pr ? 'yes' : 'no' });
-    }
+    const broadcast = snap.broadcast;
+    // fire every phone's seen+respond concurrently (each with its own short, seeded jitter before
+    // responding) rather than one after another — sequential real network round-trips for 24+
+    // phones would make the button noticeably slow, and it's still genuine server timestamps, just
+    // not artificially spread over the multi-second range the offline branch above uses.
+    await Promise.all(
+      ids.map(async (pid) => {
+        const p = snap.participants.find((x) => x.id === pid);
+        // same rule as the offline branch above: only respond where the cohort actually has a message.
+        if (!p || !broadcast.messages[p.cohort]) return;
+        const pr = res.nudgeInfo.find((x) => x.cohort === p.cohort)?.p ?? 0.3;
+        const drawn = drawResponse(rnd, pr);
+        const groupResponse = drawGroupResponse(rnd, drawn);
+        const jitterMs = 200 + Math.floor(rnd() * 2800);
+        await post('seen', { pid });
+        await new Promise((r) => setTimeout(r, jitterMs));
+        await post('vote', { pid, response: drawn, groupResponse });
+      }),
+    );
   }
   refresh();
 }
 
-/** acceptOverride[cohort] = yes / (yes + no); cohorts with fewer than 2 votes keep the model's p */
+/**
+ * acceptOverride[cohort] = a small-sample-aware blend of the observed compliance rate and the
+ * model's own p (§17/§18 of the room-upgrade brief): below MIN_RESPONSES_FOR_OVERRIDE the room has
+ * zero weight (identical to the model), ramping to full weight at STRONG_SAMPLE_THRESHOLD. This
+ * replaces the old flat "yes / (yes+no), ignore below 2 votes" cutoff with something that can't
+ * let a handful of phones swing a plan meant for thousands, while still moving smoothly once
+ * there's a real sample.
+ */
 export async function runWithRoom() {
   const snap = get().snap;
   const s = consoleStore.getState();
   if (!snap || !s.approved) return;
   set({ running: true });
-  // tallyByCohort and tallyVotes below share one definition of "votable" (roomVotes.ts), so the
-  // per-cohort breakdown here and the room-wide total always agree with each other and with the
-  // live tally bar in RoomPanel.tsx.
-  const byCohort = tallyByCohort(snap);
+  const now = Date.now();
+  // responseBreakdown/observedAcceptance (roomVotes.ts) share one definition of "votable" and one
+  // compliance weighting, so this per-cohort breakdown always agrees with the live panel in
+  // RoomPanel.tsx and with the room-wide total below.
+  const byCohort = responseBreakdown(snap, now);
   const override: Record<string, number> = {};
   const nudged = s.approved.ivs.filter((iv) => iv.type === 'nudge').map((iv) => (iv as { cohort: string }).cohort);
   const modelRes = simulate(s.scn, s.approved.ivs, { waits: s.waits, lite: true });
   const perCohort = nudged.map((id) => {
-    const b = byCohort[id] || { yes: 0, no: 0 };
-    const n = b.yes + b.no;
+    const b = byCohort[id];
     const modelP = modelRes.nudgeInfo.find((x) => x.cohort === id)?.p ?? 0;
-    const p = n >= 2 ? b.yes / n : null;
+    const { n, rate } = observedAcceptance(byCohort, id);
+    const w = blendWeight(n);
+    const p = n > 0 ? modelP * (1 - w) + rate * w : null;
     if (p != null) override[id] = p;
-    return { id, label: s.scn.cohorts.find((c) => c.id === id)?.label || id, yes: b.yes, no: b.no, p, modelP };
+    const yes = (b?.accepted ?? 0) + (b?.alreadyMoved ?? 0);
+    const no = (b?.declined ?? 0) + (b?.ignored ?? 0) + (b?.tooLate ?? 0);
+    return { id, label: s.scn.cohorts.find((c) => c.id === id)?.label || id, yes, no, p, modelP };
   });
-  const { total: votes, yes: yesAll } = tallyVotes(snap);
+  const totals = sumResponseCounts(byCohort);
+  const votes = totals.accepted + totals.declined + totals.alreadyMoved + totals.tooLate + totals.ignored;
+  const yesAll = totals.accepted + totals.alreadyMoved;
   const sizes = perCohort.map((c) => s.scn.cohorts.find((x) => x.id === c.id)?.size || 0);
   const modelYes = perCohort.reduce((a, c, i) => a + c.modelP * sizes[i], 0) / Math.max(1, sizes.reduce((a, b) => a + b, 0));
   const roomYes = votes ? yesAll / votes : 0;

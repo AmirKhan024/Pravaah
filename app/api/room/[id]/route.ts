@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { join, phoneView, reset, roomExists, setBroadcast, setOutcome, snapshot, vote } from '@/lib/roomServer';
+import { join, markSeen, phoneView, reset, roomExists, setBroadcast, setOutcome, snapshot, vote } from '@/lib/roomServer';
 import type { Lang } from '@/engine';
+import { parseGroupResponse, parseResponse } from '@/lib/roomResponses';
 import type { RoomBroadcast, RoomOutcome } from '@/lib/roomTypes';
 
 export const dynamic = 'force-dynamic';
@@ -35,9 +36,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         if (!p) return NextResponse.json({ ok: false, error: 'no such room' }, { status: 404 });
         return NextResponse.json(await phoneView(id, b.pid));
       }
+      case 'seen': {
+        if (typeof b.pid !== 'string') return NextResponse.json({ ok: false }, { status: 400 });
+        await markSeen(id, b.pid);
+        return NextResponse.json(await phoneView(id, b.pid));
+      }
       case 'vote': {
         if (typeof b.pid !== 'string') return NextResponse.json({ ok: false }, { status: 400 });
-        const ok = await vote(id, b.pid, b.choice === 'yes' ? 'yes' : 'no');
+        const response = parseResponse(b.response);
+        if (!response) return NextResponse.json({ ok: false, error: 'invalid response' }, { status: 400 });
+        const groupResponse = parseGroupResponse(b.groupResponse);
+        const ok = await vote(id, b.pid, response, groupResponse);
         return NextResponse.json({ ...(await phoneView(id, b.pid)), ok });
       }
       case 'broadcast': {

@@ -6,7 +6,19 @@ export interface RoomCohort {
   size: number;
   /** one-line description for the phone, e.g. "on the harbour line into Nerul" */
   blurb: string;
+  /** realistic attendee profile, derived once from the real Scenario/Cohort when the room opens */
+  originLabel?: string;
+  transportMode?: string;
+  /** HH:MM on the scenario's own clock, e.g. "19:05" */
+  arrivalLabel?: string;
+  /** the gate/zone name this cohort currently heads for */
+  initialRoute?: string;
 }
+
+/** How a participant actually reacted to a broadcast — not just yes/no (see roomResponses.ts). */
+export type ResponseKind = 'accept' | 'decline' | 'ignore' | 'too_late' | 'already_moved';
+/** Whether the participant's travel group is expected to follow along. */
+export type GroupResponse = 'all' | 'individual' | 'none';
 
 export interface RoomMessage {
   head: string;
@@ -35,11 +47,21 @@ export interface Participant {
   lang: Lang;
   joinedAt: number;
   simulated?: boolean;
+  /** 1-4, seeded from the participant id at join time — a simple stand-in for travelling in a group */
+  groupSize?: number;
 }
 
 export interface Vote {
-  choice: 'yes' | 'no';
+  /** kept for backward compatibility; derived from `response` (see roomResponses.deriveChoice) */
+  choice?: 'yes' | 'no';
   at: number;
+  response?: ResponseKind;
+  groupResponse?: GroupResponse | null;
+  /** server timestamp: first confirmed delivery of the current broadcast to this phone */
+  seenAt?: number | null;
+  /** server timestamp: when the response was recorded */
+  respondedAt?: number | null;
+  responseDelayMs?: number | null;
 }
 
 export interface RoomSnapshot {

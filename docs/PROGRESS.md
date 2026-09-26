@@ -11,6 +11,114 @@ whole app read one module-level `dyPatil` constant, and a dozen `scn.id === 'dyP
 carried literal gate/cohort ids. Built the missing seam end to end instead — loader, entry point,
 confidence, calibration, hardcode audit — in six commits, golden test green throughout.
 
+---
+
+## 2026-09-26 — The Room: realistic crowd participation (richer responses, profiles, blended override)
+
+**Why.** The Room's phone interaction was a plain YES/NO vote — closer to a demo poll than a real
+crowd-feedback loop. Upgraded it to distinguish accepting, declining, ignoring, answering too late,
+and having already moved before the message arrived; gave each participant a real per-cohort
+attendee profile and a small seeded group size; and replaced the flat "≥2 votes" cutoff on
+`acceptOverride` with a small-sample-aware blend. The QR/join mechanism, Supabase persistence
+architecture, and the deterministic engine's default behaviour are all preserved unchanged.
+
+**Changed**
+- `lib/roomTypes.ts`: `RoomCohort` gains `originLabel`/`transportMode`/`arrivalLabel`/`initialRoute`
+  (derived once from the real `Scenario`/`Cohort`, not invented); `Participant` gains `groupSize`
+  (1-4, seeded per participant id); `Vote.choice` becomes optional and is now *derived* from new
+  `response`/`groupResponse`/`seenAt`/`respondedAt`/`responseDelayMs` fields — kept for backward
+  compatibility, never dropped.
+- New `lib/roomResponses.ts`: the `ResponseKind`/`GroupResponse` taxonomy, the illustrative
+  `COMPLIANCE_WEIGHT` mapping, `MIN_RESPONSES_FOR_OVERRIDE`/`STRONG_SAMPLE_THRESHOLD`/`blendWeight()`
+  (0 below 5 responses, ramping to full weight at 20+), and `classifyServerResponse()` — a late
+  accept/decline is reclassified `too_late` server-side (never trusting the client's clock);
+  `already_moved` is left alone since it's a claim about the past, not a timeliness-dependent
+  choice.
+- New `lib/roomProfiles.ts` (per-cohort profile, using the real scenario — `clockFor`, `gateOfPath`,
+  `zoneName`) and `lib/seededGroup.ts` (a tiny, dependency-free seeded PRNG so the server room code
+  still has zero `@/engine` coupling).
+- `lib/roomVotes.ts`: added `responseBreakdown()` (per-cohort accept/decline/already-moved/too-late/
+  ignored counts — "ignored" only once the broadcast's countdown has actually closed, not before),
+  `observedAcceptance()` (weighted compliance over *settled* responses only), `responseTiming()`
+  (median response delay). Existing `tallyVotes`/`tallyByCohort` untouched.
+- `lib/roomServer.memory.ts` + `.supabase.ts` + the facade: `join()` now also assigns a seeded
+  `groupSize`; new `markSeen()` records a real server-timestamped "delivered" moment once per
+  broadcast; `vote()` now takes `(response, groupResponse)`, reclassifies late answers server-side,
+  and computes `responseDelayMs` from the recorded `seenAt`. A "seen but not yet responded" row is
+  never exposed to the phone or counted as a vote (guarded in both backends' `phoneView`/tally
+  logic).
+- `supabase/schema.sql`: additive-only migration appended at the end of the file — `group_size` on
+  `participants`; `choice` relaxed to nullable; `response`/`group_response`/`seen_at`/
+  `responded_at`/`response_delay_ms` added to `votes`. No drops, no new tables.
+- `app/api/room/[id]/route.ts`: new `seen` action; `vote` action now validates `response`/
+  `groupResponse` server-side against the fixed enums.
+- `lib/room.ts`: `roomCohorts()` attaches the derived profile fields; `simulateRoom()` draws a full
+  response (+ group response) from a fixed, documented, seeded distribution built off the model's
+  own `nudgeInfo.p` instead of a coin flip, and runs simulated phones' seen+respond concurrently
+  with a short seeded jitter (see bug below); `runWithRoom()` now blends the observed rate with the
+  model's `p` via `blendWeight()` instead of the old flat cutoff.
+- `app/join/[roomId]/Phone.tsx`: new attendee-profile screen ("You are entering the crowd") gating
+  the waiting/message view; the broadcast screen now shows accept/decline/already-moved, a group
+  follow-up question when `groupSize > 1`, and an explicit too-late acknowledgement once the
+  countdown has closed; fires the new `seen` action once per broadcast.
+- `components/room/RoomPanel.tsx`: the plain yes/no bar is now a 5-way response breakdown with
+  percentages, a median response-time line (with a "waiting for more responses" floor), and a new
+  per-cohort behaviour table with an estimated compliance rate; the result card's footnote now
+  describes the blend thresholds instead of the old "fewer than 2 votes" rule.
+- `scripts/e2e-room.mjs`: updated for the new UI (the "Enter the crowd" gate, three response
+  buttons, the group-follow question) and to exercise accept/decline/already-moved across phones
+  rather than only yes/no; now takes an optional base-URL argument.
+- Tests: new `lib/__tests__/roomResponses.test.ts`, `lib/__tests__/roomProfiles.test.ts`; extended
+  `lib/__tests__/roomVotes.test.ts` and `lib/__tests__/roomServer.fallback.test.ts`.
+
+**A real bug found and fixed during this build, not before.** `simulateRoom()`'s online branch
+joined N simulated phones, then read `get().snap` to look up each one's assigned cohort before
+casting a response — but `post('join', …)` returns a `phoneView`, not a room snapshot, so the store
+update guarded on `if (j.participants)` never fired for a join response, and `get().snap` was often
+still the pre-simulate snapshot. Every simulated phone would then fail its `snap.participants.find`
+lookup and silently cast no response at all (verified live: 24 phones joined, 0 votes recorded).
+This bug predates this change (the original yes/no version has the same shape), but this feature
+depends on it to demonstrate the response distribution, so fixed it here: `simulateRoom()` now
+calls `refresh()` explicitly before reading the snapshot, and casts all phones' seen+respond calls
+concurrently (each with its own short seeded jitter) rather than sequentially, which is also faster
+for a live demo click.
+
+**Verified**
+- `npx tsc --noEmit`: clean. `npx vitest run`: 78/78 (up from 42 pre-existing... see history above —
+  actual baseline at the start of this pass was the full existing suite, all still green, plus the
+  new/extended Room tests). `npm run build`: clean. `git diff --stat -- engine worker`: no changes
+  — the deterministic engine and its golden test are untouched; `simulate(scn, ivs)` with no
+  `acceptOverride` is byte-for-byte the same call it always was.
+- Live end-to-end against `npm run dev` (in-memory backend — see limitation below), via an updated
+  `scripts/e2e-room.mjs` driving three real phone contexts plus "Simulate 24 phones": confirmed the
+  attendee-profile screen renders real per-cohort data (e.g. "Nerul station" / "19:02" / "Local
+  train" / "2 people, including you" / "Gate 5"); confirmed accept/decline/already-moved/too-late/
+  no-response all appear in the live breakdown after simulating 24 phones (`{accept:5, decline:11,
+  already_moved:1, ignore:5, too_late:4}` in one run, queried directly from the room API); confirmed
+  the per-cohort compliance table and the median response-time line (1.9s once enough phones had
+  answered, correctly showing "waiting for more responses" beforehand); confirmed the post-rerun
+  result card and the phone's "what happened to people like you" outcome screen both render with
+  real numbers from the actual re-run.
+
+**Known limitations, stated plainly**
+- **No Supabase credentials in this environment** — there is no `.env.local`. `lib/roomServer.supabase.ts`
+  and the `supabase/schema.sql` migration are written to the same contract as the verified in-memory
+  backend and are internally consistent, but were never applied to or exercised against a live
+  Supabase project in this session. Apply the migration (`node scripts/apply-schema.mjs` with
+  `DIRECT_URL` set) and re-run the same live walkthrough against a real project before relying on
+  the Supabase path.
+- The compliance weights, the seeded response-distribution split used by simulated phones, and the
+  5/20 small-sample blend thresholds are illustrative, hand-set constants (matching the existing
+  nudge-acceptance model's own honesty standard) — not fitted to any field data.
+- The attendee "group" question is a single field (`all`/`individual`/`none`), shown but not fed
+  into the compliance/override math, per the brief's own "don't overengineer" guidance.
+- No new room lifecycle state machine was added — an unknown/evicted room already 404s and the
+  phone already shows "This room has ended," which was judged sufficient.
+
+---
+
+## 2026-09-26 — Cover page: reuse FlowMap instead of the bespoke schematic renderer
+
 **Changed**
 - **`engine/csv.ts` + `engine/dataLoader.ts`** (new, pure TS, no fs/DOM): `parseCsv()` (RFC4180-ish)
   and `loadScenarioFromRows()` turn an event head's own `event/gates/tickets/arrivals/hotels/

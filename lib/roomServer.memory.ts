@@ -6,7 +6,9 @@ import 'server-only';
  * Vercel serverless instances, which is exactly why Phase 2 moves the primary path to Supabase.
  */
 import type { Lang } from '@/engine';
-import type { Participant, PhoneView, RoomBroadcast, RoomCohort, RoomOutcome, RoomSnapshot, Vote } from './roomTypes';
+import { classifyServerResponse, deriveChoice, type ResponseKind } from './roomResponses';
+import { seededGroupSize } from './seededGroup';
+import type { GroupResponse, Participant, PhoneView, RoomBroadcast, RoomCohort, RoomOutcome, RoomSnapshot, Vote } from './roomTypes';
 
 interface Room {
   id: string;
@@ -64,16 +66,38 @@ export async function join(id: string, pid: string, lang: Lang, simulated = fals
     existing.lang = lang;
     return existing;
   }
-  const p: Participant = { id: pid, cohort: assignCohort(r), lang, joinedAt: Date.now(), simulated };
+  const p: Participant = { id: pid, cohort: assignCohort(r), lang, joinedAt: Date.now(), simulated, groupSize: seededGroupSize(pid) };
   r.participants.set(pid, p);
   return p;
 }
 
-export async function vote(id: string, pid: string, choice: 'yes' | 'no'): Promise<boolean> {
+export async function markSeen(id: string, pid: string): Promise<void> {
+  const r = rooms.get(id.toUpperCase());
+  const p = r?.participants.get(pid);
+  if (!r || !p || !r.broadcast || !r.broadcast.messages[p.cohort]) return;
+  const existing = r.votes.get(pid);
+  if (existing?.seenAt) return; // already recorded for this broadcast
+  r.votes.set(pid, { ...(existing || { at: 0 }), seenAt: Date.now() });
+}
+
+export async function vote(id: string, pid: string, response: ResponseKind, groupResponse?: GroupResponse | null): Promise<boolean> {
   const r = rooms.get(id.toUpperCase());
   const p = r?.participants.get(pid);
   if (!r || !p || !r.broadcast || !r.broadcast.messages[p.cohort]) return false;
-  r.votes.set(pid, { choice, at: Date.now() });
+  const now = Date.now();
+  const classified = classifyServerResponse(response, now, r.broadcast.closesAt);
+  const prior = r.votes.get(pid);
+  const seenAt = prior?.seenAt ?? null;
+  const v: Vote = {
+    choice: deriveChoice(classified),
+    at: now,
+    response: classified,
+    groupResponse: groupResponse ?? null,
+    seenAt,
+    respondedAt: now,
+    responseDelayMs: seenAt ? now - seenAt : null,
+  };
+  r.votes.set(pid, v);
   return true;
 }
 
@@ -111,13 +135,18 @@ export async function phoneView(id: string, pid: string): Promise<PhoneView> {
   if (!me) return { ok: false, now: Date.now() };
   const cohort = r.cohorts.find((c) => c.id === me.cohort);
   const msgs = r.broadcast?.messages[me.cohort];
-  const v = r.votes.get(pid) || null;
+  const raw = r.votes.get(pid) || null;
+  // a "seen" placeholder (no response yet) is not a vote — don't expose or count it as one
+  const v = raw && raw.response ? raw : null;
   let yes = 0,
     no = 0;
-  r.votes.forEach((x) => (x.choice === 'yes' ? yes++ : no++));
+  r.votes.forEach((x) => {
+    if (x.choice === 'yes') yes++;
+    else if (x.choice === 'no') no++;
+  });
   let outcome: PhoneView['outcome'] = null;
   if (r.outcome) {
-    const key = !msgs ? 'none' : v ? v.choice : 'no';
+    const key = !msgs ? 'none' : v ? v.choice! : 'no';
     const t = r.outcome.texts[me.cohort]?.[key];
     outcome = { text: t ? t[me.lang] : '', headline: r.outcome.headline[me.lang] };
   }

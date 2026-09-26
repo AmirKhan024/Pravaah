@@ -14,6 +14,10 @@ const COPY = {
   watch: { word: 'Watch', tone: 'brass' as const, sub: 'A move is coming due — watch it.' },
   act: { word: 'Act now', tone: 'danger' as const, sub: 'A move needs a decision.' },
 };
+/** the mockup's "All clear" — not a new status value (opsStatus() still says 'calm'), just this
+ *  word's display when that calm is because a plan is actually in force, from real approved-plan
+ *  state, not a guess (docs/DECISIONS.md, 2026-09-26). */
+const ALL_CLEAR = { word: 'All clear', tone: 'safe' as const, sub: 'The plan is in force.' };
 
 export default function StatusBand() {
   const s = useSlice(store, (s) => ({ status: opsStatus(s), approved: s.approved, board: !!s.board }));
@@ -25,7 +29,7 @@ export default function StatusBand() {
         <span className="text-[13px] text-dim">testing every plan against 12 rough nights…</span>
       </Band>
     );
-  const c = COPY[s.status];
+  const c = s.status === 'calm' && s.approved ? ALL_CLEAR : COPY[s.status];
   return (
     <Band tone={c.tone}>
       <span className="font-display text-[40px] leading-none tracking-tight" style={{ color: c.tone === 'safe' ? 'var(--color-safe)' : c.tone === 'danger' ? 'var(--color-danger-soft)' : 'var(--color-brass)' }}>

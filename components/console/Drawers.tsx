@@ -6,6 +6,7 @@ import { planResult } from '@/lib/planCache';
 import { verifyLedger, type LedgerEntry } from '@/lib/ledger';
 import { BOARD_CHECKS, candidates, comma, feasible, inr, leverWorth, type BoardOption, type Lever, type RedTeamNight } from '@/engine';
 import { Button, cx, Delta, Kicker, Pill, Row } from '@/components/ui';
+import WhatIfBar from './WhatIfBar';
 
 function Shell({ title, sub, children, wide }: { title: ReactNode; sub?: ReactNode; children: ReactNode; wide?: boolean }) {
   return (
@@ -455,6 +456,17 @@ function DeckDrawer() {
   );
 }
 
+/** More → "What if…" — the same WhatIfBar overlay used to float permanently over the map;
+ *  tucked in here instead so the default Watch/Check/Why/Fix/Send flow reads as one question at a
+ *  time. Same component, same store actions (runWhatIf/runWhatIfSpec/clearWhatIf) — nothing new. */
+function WhatIfDrawer() {
+  return (
+    <Shell title="What if…" sub="Try a rough night and see what the plan does to it. The engine re-simulates; nothing here is guessed.">
+      <WhatIfBar />
+    </Shell>
+  );
+}
+
 export default function Drawers() {
   const d = useSlice(store, (s) => s.drawer);
   if (d === 'redteam') return <RedTeamDrawer />;
@@ -464,5 +476,6 @@ export default function Drawers() {
   if (d === 'about') return <AboutDrawer />;
   if (d === 'deck') return <DeckDrawer />;
   if (d === 'leverWhy') return <LeverWhyDrawer />;
+  if (d === 'whatif') return <WhatIfDrawer />;
   return null;
 }

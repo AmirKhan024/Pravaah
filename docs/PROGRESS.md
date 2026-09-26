@@ -4,6 +4,31 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-26 — Simple-UI migration, Phase 2: shell, More menu, theme toggle, plain-language step labels
+
+**Changed**
+- `components/console/Console.tsx`: `STEPS` (the tab labels only — internal step numbers/ids
+  unchanged) now read Watch/Check/Why/Fix/Send instead of Rehearse/Predict/Explain/Prove/Guide.
+  Added `MoreMenu()` (The Room, What if…, Bad-night test, Build your own plan, Ravi's trace, Black
+  Box, How this works — each a one-line call into an existing store action or `drawer` key) and
+  `<ThemeToggle/>` to the header; removed the always-floating `<WhatIfBar/>` from the map overlay.
+- `components/console/Drawers.tsx`: new `whatif` drawer key (`lib/console.ts`'s `Drawer` union)
+  renders the same `WhatIfBar` inside the existing `Shell` wrapper other drawers use.
+- `components/console/ThemeToggle.tsx` (new), `lib/theme.ts` (Phase 1): a Light/Night radio-group
+  in the header, using `document.documentElement.dataset.theme` — instant, no reload.
+- `components/live/StatusBand.tsx`: "All clear" wording when `opsStatus()==='calm'` and a plan is
+  approved (display-only; `opsStatus()` itself is untouched, still just `calm`/`watch`/`act`).
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 52/52. `git diff --stat -- engine worker`: no changes.
+- Playwright against `npm run dev` (`scripts/shot.mjs`): step tabs read "1 Watch 2 Check 3 Why
+  4 Fix 5 Send"; More menu opens with all 7 items and their live data (room count, ledger count);
+  clicking "What if…" opens the drawer with the same chips/input/result panel as before; the
+  theme toggle flips every token instantly (checked via `document.documentElement.dataset.theme`)
+  with no page reload and no visual regression in either theme.
+
+---
+
 ## 2026-09-26 — Simple-UI migration, Phase 1: design tokens (Light default + Night mode)
 
 **Changed**

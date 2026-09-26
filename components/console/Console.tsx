@@ -4,7 +4,7 @@
  * what's going wrong → what should I do → what must I do right now (and how long do I have)?
  */
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSlice } from '@/lib/createStore';
 import { boot, goStep, store } from '@/lib/console';
 import { openRoom, roomStore } from '@/lib/room';
@@ -12,13 +12,13 @@ import { useSimTicker } from '@/lib/useSimTicker';
 import { RAVI } from '@/engine';
 import FlowMap from '@/components/map/FlowMap';
 import { cx, Logo } from '@/components/ui';
+import ThemeToggle from './ThemeToggle';
 import DecisionClock from './DecisionClock';
 import Drawers from './Drawers';
 import MobileNotice from './MobileNotice';
 import Toast from './Toast';
 import { RaviCard, Readouts } from './Readouts';
 import Timeline from './Timeline';
-import WhatIfBar from './WhatIfBar';
 import Rehearse from './steps/Rehearse';
 import Predict from './steps/Predict';
 import Explain from './steps/Explain';
@@ -26,7 +26,59 @@ import Prove from './steps/Prove';
 import Guide from './steps/Guide';
 import RoomPanel from '@/components/room/RoomPanel';
 
-const STEPS = ['Rehearse', 'Predict', 'Explain', 'Prove', 'Guide'];
+/** internal step ids are unchanged (SOURCE_OF_TRUTH's Rehearse/Predict/Explain/Prove/Guide,
+ *  analytics events, keyboard 1-5) — this is display-only wording (docs/DECISIONS.md). */
+const STEPS = ['Watch', 'Check', 'Why', 'Fix', 'Send'];
+
+/** More → the expert features that used to sit directly on the top nav or float over the map:
+ *  The Room, Black Box, Bad-night test, What-ifs, Ravi's trace, How this works, Build your own
+ *  plan. Every entry reuses an existing store action or drawer key — nothing new is computed. */
+function MoreMenu() {
+  const [open, setOpen] = useState(false);
+  const room = useSlice(roomStore, (r) => ({ id: r.id, n: r.snap?.participants.length || 0 }));
+  const ledger = useSlice(store, (s) => s.ledger.length);
+  const item = (label: string, sub: string, onClick: () => void) => (
+    <button
+      onClick={() => {
+        setOpen(false);
+        onClick();
+      }}
+      className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-panel-2"
+    >
+      <span className="text-[13px] font-medium text-text">{label}</span>
+      <span className="text-[11.5px] text-dim">{sub}</span>
+    </button>
+  );
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] text-dim hover:bg-panel-2 hover:text-text"
+      >
+        More
+        <svg viewBox="0 0 12 8" className={cx('size-2.5 transition-transform', open && 'rotate-180')} aria-hidden>
+          <path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? (
+        <>
+          <button aria-label="Close menu" className="fixed inset-0 z-30 cursor-default" onClick={() => setOpen(false)} />
+          <div role="menu" className="absolute right-0 top-full z-40 mt-2 flex w-72 flex-col gap-0.5 rounded-xl border border-line bg-panel p-2 shadow-[var(--shadow-card)]">
+            {item('The Room', room.id ? `${room.n} people connected` : 'Ask the crowd a real yes/no question', openRoom)}
+            {item('What if…', 'Try a rough night: more people, rain, a late gate', () => store.setState({ drawer: 'whatif' }))}
+            {item('Bad-night test', 'Stress-test the plan against 12 rough nights', () => store.setState({ drawer: 'redteam' }))}
+            {item('Build your own plan', 'Pick the moves yourself instead of the recommendation', () => store.setState({ drawer: 'deck' }))}
+            {item("Ravi's trace", 'Follow one person through both evenings', () => store.setState({ drawer: 'report' }))}
+            {item('Black Box', `${ledger} tamper-proof log entries`, () => store.setState({ drawer: 'ledger' }))}
+            {item('How this works', "What the simulation does, and what it's guessing", () => store.setState({ drawer: 'about' }))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 const SCRIPT = [
   { t: 2, x: '14:00. Nothing has gone wrong yet. The gates open in two hours.' },
@@ -143,8 +195,7 @@ export default function Console() {
   useStoryCaptions();
   useKeys();
   useEffect(() => boot(), []);
-  const top = useSlice(store, (s) => ({ name: s.scn.name, ledger: s.ledger.length, mode: s.mode }));
-  const room = useSlice(roomStore, (r) => ({ id: r.id, n: r.snap?.participants.length || 0 }));
+  const top = useSlice(store, (s) => ({ name: s.scn.name, mode: s.mode }));
 
   return (
     <div className="grid h-dvh grid-rows-[52px_auto_minmax(0,1fr)] overflow-hidden bg-ink">
@@ -158,16 +209,11 @@ export default function Console() {
           <span className="text-[10px] text-dimmer">rehearsal · every number from the simulation</span>
         </div>
         <nav className="ml-auto flex items-center gap-1">
-          <button onClick={openRoom} className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12.5px] text-dim hover:bg-panel-2 hover:text-text">
-            <span className={cx('size-1.5 rounded-full', room.id ? 'bg-safe' : 'bg-dimmer')} />
-            The Room{room.id ? <span className="num text-text">{room.n}</span> : null}
-          </button>
-          <button onClick={() => store.setState({ drawer: 'ledger' })} className="rounded-lg px-3 py-1.5 text-[12.5px] text-dim hover:bg-panel-2 hover:text-text">
-            Black Box <span className="num text-dimmer">{top.ledger}</span>
-          </button>
           <button onClick={() => store.setState({ drawer: 'about' })} className="rounded-lg px-3 py-1.5 text-[12.5px] text-dim hover:bg-panel-2 hover:text-text">
             How this works
           </button>
+          <MoreMenu />
+          <ThemeToggle />
         </nav>
       </header>
 
@@ -193,9 +239,8 @@ export default function Console() {
             }}
           />
           <div className="pointer-events-none absolute inset-0 flex flex-col">
-            <div className="flex items-start justify-between gap-4 p-4">
-              <WhatIfBar />
-              <div className="ml-auto flex flex-col gap-3">
+            <div className="flex items-start justify-end gap-4 p-4">
+              <div className="flex flex-col gap-3">
                 <Readouts />
                 <RaviCard />
               </div>

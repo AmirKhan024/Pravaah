@@ -5,6 +5,36 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-26 — Simple-UI migration, Phase 2: What-ifs moved behind More; "All clear" is calm+approved, not a new status
+
+**Decision:** `WhatIfBar` (the chip row + free-text question + result panel) no longer floats
+permanently over the map. It's the same component, unchanged, now rendered inside a new
+`whatif` drawer (`lib/console.ts`'s `Drawer` union gained one member) opened from the new **More**
+menu. The old top-nav's "The Room" and "Black Box" buttons moved into the same menu, alongside
+"Bad-night test," "Build your own plan," and "Ravi's trace" (which was already `ReportDrawer`'s
+content) — every entry calls an existing store action or sets an existing drawer key; nothing new
+was computed. "The Room" also stays reachable exactly as before via its own keyboard shortcut (`R`).
+
+**Why:** §9/§11 of the brief ask for one main question per step and expert features "retained
+behind More, Details, drawers, or tabs" — a permanently-visible What-if bar with an LLM-backed
+free-text box competes with that on every single step, not just Step 4/5 where what-ifs are most
+relevant. Consolidating it with the other already-drawer-based expert features (Bad-night test,
+Build-your-own-plan) needed no new mechanism, just one more entry in an enum that already existed
+for exactly this purpose.
+
+**"All clear":** `opsStatus()` in `lib/console.ts` is untouched — it still returns `'calm'`
+whenever nothing is due, whether or not a plan is approved (per its own doc comment, this is
+deliberate: Live Ops's status word and the Decision Clock must never disagree). `StatusBand.tsx`
+now displays "All clear" instead of "Calm" specifically when `status==='calm' && approved` — a
+display-only branch over state that already exists, not a new status value, matching the brief's
+explicit instruction not to invent a second status system.
+
+**Also added:** a Light/Night toggle (`components/console/ThemeToggle.tsx`, `lib/theme.ts`) in the
+top shell — Phase 1 built the tokens but nothing yet let a person switch them. Verified live: the
+toggle flips every token instantly via the `[data-theme]` attribute, no reload, no flash.
+
+---
+
 ## 2026-09-26 — Simple-UI migration, Phase 1: theme tokens as CSS variables + Night as a strict preservation of the old palette
 
 **Decision:** every color in `app/globals.css`'s `@theme` block (background/panel/line/text/dim/brass/

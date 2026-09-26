@@ -327,10 +327,44 @@ function ReportDrawer() {
   );
 }
 
+const TAG_TONE: Record<string, string> = { real: 'text-safe', estimated: 'text-brass', invented: 'text-danger', playbook: 'text-dim' };
+
+/** Step 4's "Data" drawer: every row an event head fed in, tagged real/estimated/invented — never a
+ *  claim of more certainty than the data supports. Only shown once a data-driven scenario is loaded. */
+function DataSection() {
+  const s = useSlice(store, (st) => ({ source: st.dataSource, fields: st.dataFields, conf: st.dataConfidence }));
+  if (s.source === 'flagship' || !s.conf) return null;
+  const c = s.conf;
+  return (
+    <div>
+      <Kicker>Your event&apos;s data{s.source === 'sample' ? ' — sample fixture' : ''}</Kicker>
+      <p className="mb-2">
+        Confidence: <b className={cx('text-text', c.level === 'high' ? 'text-safe' : c.level === 'medium' ? 'text-brass' : 'text-danger')}>{c.level}</b>. {comma(c.invented)} of {comma(c.total)} inputs are invented, {comma(c.estimated)} estimated, {comma(c.real)} real.
+        {s.source === 'sample' ? ' This is a sample fixture, not a real event — labelled row by row below.' : ''}
+      </p>
+      <div className="max-h-64 overflow-y-auto rounded-lg border border-line">
+        <table className="w-full text-left text-[12px]">
+          <tbody>
+            {s.fields.map((f, i) => (
+              <tr key={i} className="border-b border-line/60 align-top last:border-0">
+                <td className="whitespace-nowrap px-2 py-1 text-dimmer">{f.file}</td>
+                <td className="px-2 py-1 text-text">{f.row}</td>
+                <td className={cx('px-2 py-1 font-semibold', TAG_TONE[f.tag])}>{f.tag}</td>
+                <td className="px-2 py-1 text-dimmer">{f.sourceNote || ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function AboutDrawer() {
   return (
     <Shell title="How this works, and what we guessed" sub="If you are going to trust a number on this screen, you should know where it came from.">
       <div className="flex flex-col gap-5 text-[13.5px] leading-relaxed text-dim">
+        <DataSection />
         <p>
           <b className="text-text">No AI writes the numbers.</b> Every figure here comes from a simulation running in your browser: how crowded a place gets, how long people wait, what it costs, how many people listen. Run it twice and you get the same evening both times.
         </p>

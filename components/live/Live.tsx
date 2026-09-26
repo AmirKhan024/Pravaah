@@ -52,6 +52,7 @@ export default function Live() {
   useEscToClose();
   const scnName = useSlice(store, (s) => s.scn.name);
   const scnId = useSlice(store, (s) => s.scn.id ?? '');
+  const data = useSlice(store, (s) => ({ source: s.dataSource, conf: s.dataConfidence }));
 
   return (
     <div className="grid h-dvh grid-rows-[48px_auto_minmax(0,1fr)_auto] overflow-hidden bg-ink">
@@ -60,7 +61,14 @@ export default function Live() {
           <Logo className="size-6" />
           <span className="text-[13px] font-semibold tracking-[0.2em] text-text">PRAVAAH</span>
         </Link>
-        <span className="hidden truncate text-[11.5px] text-dimmer lg:inline">{scnName} · live ops</span>
+        <span className="hidden truncate text-[11.5px] text-dimmer lg:inline">
+          {scnName} · live ops
+          {data.source !== 'flagship' && data.conf ? (
+            <button onClick={() => store.setState({ drawer: 'about' })} className="ml-2 rounded border border-line px-1.5 py-0.5 text-[10.5px] text-dim hover:border-brass-dim/60 hover:text-text">
+              {data.source === 'sample' ? 'sample data' : 'your data'} · confidence {data.conf.level}
+            </button>
+          ) : null}
+        </span>
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => store.setState({ drawer: 'observe' })} className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-dim hover:border-brass-dim/60 hover:text-text">
             Report

@@ -47,6 +47,9 @@ export default function Home() {
           <Link href="/console" className="rounded-lg px-3 py-1.5 hover:bg-panel-2 hover:text-text">
             Full console
           </Link>
+          <Link href="/setup" className="rounded-lg px-3 py-1.5 hover:bg-panel-2 hover:text-text">
+            Give it your event
+          </Link>
           <Link href="/live" className="ml-2 rounded-lg border border-brass-dim px-3.5 py-1.5 text-brass hover:bg-[#1d1c14]">
             Live Ops
           </Link>
@@ -70,8 +73,11 @@ export default function Home() {
             Pravaah rehearses the whole event: hotels, trains, roads and gates in one simulation. It finds the minute the crowd will break, proves why, tests every fix, and tells you <b className="font-semibold text-text">how many minutes you have left to act</b>.
           </p>
           <div className="rise mt-9 flex flex-wrap gap-3" style={{ animationDelay: '480ms' }}>
-            <Link href="/console" className="inline-flex h-12 items-center gap-2 rounded-lg bg-brass px-6 text-[15px] font-semibold text-ink hover:bg-brass-glow">
-              Rehearse tonight at DY Patil <span aria-hidden>→</span>
+            <Link href="/setup" className="inline-flex h-12 items-center gap-2 rounded-lg bg-brass px-6 text-[15px] font-semibold text-ink hover:bg-brass-glow">
+              Give it your event <span aria-hidden>→</span>
+            </Link>
+            <Link href="/console" className="inline-flex h-12 items-center rounded-lg border border-line px-5 text-[14.5px] text-text hover:border-brass-dim">
+              Rehearse the DY Patil demo
             </Link>
             <Link href="/replay" className="inline-flex h-12 items-center rounded-lg border border-line px-5 text-[14.5px] text-text hover:border-brass-dim">
               Replay 4 June, respectfully

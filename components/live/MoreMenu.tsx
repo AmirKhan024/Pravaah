@@ -7,7 +7,8 @@
  */
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { runRedTeamFor, store, type Drawer } from '@/lib/console';
+import { useSlice } from '@/lib/createStore';
+import { resetToFlagship, runRedTeamFor, store, type Drawer } from '@/lib/console';
 
 const ITEMS: { label: string; sub: string; drawer?: Drawer; href?: string; action?: 'redteam' }[] = [
   { label: 'What changed (Ravi & the ghost)', sub: 'One attendee, do-nothing vs. the plan', drawer: 'report' },
@@ -22,6 +23,7 @@ const ITEMS: { label: string; sub: string; drawer?: Drawer; href?: string; actio
 ];
 
 const LINKS: { label: string; sub: string; href: string }[] = [
+  { label: 'Give it your event', sub: 'Quick start, sample data, or your own CSVs', href: '/setup' },
   { label: 'Any venue in 60 seconds', sub: 'Import roads, gates and stations', href: '/venues' },
   { label: 'Replay a run', sub: 'Scrub back through a past evening', href: '/replay' },
   { label: 'Full console', sub: 'The guided, five-step walkthrough', href: '/console' },
@@ -30,6 +32,7 @@ const LINKS: { label: string; sub: string; href: string }[] = [
 export default function MoreMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const dataSource = useSlice(store, (s) => s.dataSource);
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
@@ -77,6 +80,21 @@ export default function MoreMenu() {
                 <span className="text-[11px] text-dimmer">{it.sub}</span>
               </Link>
             ))}
+            {dataSource !== 'flagship' ? (
+              <>
+                <div className="my-1.5 border-t border-line" />
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    resetToFlagship();
+                  }}
+                  className="flex w-full flex-col px-4 py-2 text-left hover:bg-panel-2"
+                >
+                  <span className="text-[13px] text-text">Reset to the DY Patil demo</span>
+                  <span className="text-[11px] text-dimmer">Drops your loaded event, back to the flagship</span>
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       ) : null}

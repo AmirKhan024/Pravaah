@@ -18,6 +18,7 @@ import {
   type ResourceRow,
   type TicketRow,
 } from '../dataLoader';
+import { autoCandidates } from '../interventions';
 import { simulate } from '../simulate';
 import type { Scenario } from '../types';
 
@@ -80,6 +81,20 @@ describe('CSV loader — sample DY Patil event', () => {
     expect(conf.total).toBe(res.data.fields.length);
     expect(conf.invented).toBeGreaterThan(0);
     expect(['low', 'medium', 'high']).toContain(conf.level);
+  });
+
+  it('the tuned sample actually breaks at the West gate, and a data-derived redirect helps', () => {
+    const res = loadScenarioFromRows(sampleInput(), { venueLabel: 'DY Patil Stadium' });
+    if (!res.ok) throw new Error('load failed');
+    const scn = res.data.scenario;
+    const base = simulate(scn);
+    expect(base.crushMin).toBeGreaterThan(0); // Step 5: never manufacture a problem, but a tuned sample must show one
+
+    const nerul = scn.cohorts.find((c) => c.label === 'Nerul rail')!;
+    const redirect = autoCandidates(scn).find((c) => c.type === 'nudge' && c.cohort === nerul.id && c.rupees === 0)!;
+    expect(redirect.label.toLowerCase()).toContain('gate 2'); // gates.csv alt_gates for G3 is "G2;G1" — never Gate 5
+    const withRedirect = simulate(scn, [redirect]);
+    expect(withRedirect.crushMin).toBeLessThan(base.crushMin);
   });
 
   it('respects alt_gates for redirects (West gate → Gate 2 or Gate 1, never itself)', () => {

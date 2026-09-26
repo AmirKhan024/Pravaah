@@ -1,5 +1,5 @@
 group,size,share_pct,mode,origin,preferred_gate,ticket_gate,mean_arrival_time,spread_min,pulse_period_min,status,source_note
-Nerul rail,13253,30.32,rail,Nerul station,G3,G3,18:40,25,6,invented,pulse interval per brief (train-sized bursts ~6 min apart); size scaled so Gate 3's arrivals equal its T-1 tickets
+Nerul rail,13253,30.32,rail,Nerul station,G3,G3,18:40,16,6,invented,tuned to demonstrate: spread_min tightened from 25 to 16 so train-sized bursts land closer together at the (also tuned) West gate; pulse interval per brief (train-sized bursts ~6 min apart); size scaled so Gate 3's arrivals equal its T-1 tickets
 Seawoods rail,4321,9.89,rail,Seawoods-Darave station,G1,G1,18:35,30,6,invented,pulse interval per brief; size scaled to Gate 1's T-1 tickets
 Palm Beach cabs,4567,10.45,cab,Palm Beach Road drop-off,G3,G3,18:50,20,,invented,size scaled so Gate 3's arrivals equal its T-1 tickets
 Self-drive,5185,11.86,car,Sector 20 parking,G1,G1,17:45,55,,invented,size scaled to Gate 1's T-1 tickets

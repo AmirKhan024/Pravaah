@@ -1,6 +1,6 @@
 gate_id,name,side,lanes,forecourt_area_m2,stands_served,vip_gate,accessible_lane,status,source_note
 G1,Gate 1,north,10,3400,North Stand,false,true,invented,unchanged from prior version; specified in brief; not a verified real DY Patil gate plan
 G2,Gate 2,south,9,2200,South Stand,false,true,invented,unchanged from prior version; added by Claude to complete a 5-gate layout for the demo
-G3,Gate 3,west,12,1600,West Lower;West Upper,false,false,invented,unchanged from prior version; specified in brief as the overloaded gate; no accessible lane modeled here on purpose -- narrow forecourt is part of the overload story
+G3,Gate 3,west,7,1000,West Lower;West Upper,false,false,invented,tuned to demonstrate: lanes reduced from 12 to 7 and forecourt from 1600 to 1000 m2 so the West gate (the brief's overloaded gate) actually shows dangerous minutes in the sample; no accessible lane modeled here on purpose -- narrow forecourt is part of the overload story
 G4,Gate 4,southeast,4,900,Pavilion / Corporate Boxes,true,true,invented,unchanged from prior version; VIP gate added by Claude; the 60-corporate-box figure it feeds is real (hafeezcontractor.com; dypatilstadium.com)
 G5,Gate 5,east,8,2800,East Stand,false,true,invented,unchanged from prior version; specified in brief as the underused gate

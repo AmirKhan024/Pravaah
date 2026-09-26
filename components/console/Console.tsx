@@ -180,16 +180,6 @@ function Caption() {
   );
 }
 
-function Legend() {
-  return (
-    <div className="pointer-events-auto flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-ink/80 px-3 py-1.5 text-[10.5px] text-dim backdrop-blur-[2px]">
-      <span>people per m²</span>
-      <span className="h-1.5 w-28 rounded-full" style={{ background: 'linear-gradient(90deg,#2C4750,#3F7A6B,#9AA24B,#C79338,#CC5F2C,#B02D1E)' }} />
-      <span className="num">0 · 2 · 4 · 5.8</span>
-    </div>
-  );
-}
-
 export default function Console() {
   useSimTicker();
   useStoryCaptions();
@@ -246,12 +236,8 @@ export default function Console() {
               </div>
             </div>
             <div className="mt-auto flex flex-col gap-3">
-              <div className="flex items-end justify-between px-4">
-                <div className="flex-1" />
+              <div className="flex items-end justify-center px-4">
                 <Caption />
-                <div className="flex flex-1 justify-end">
-                  <Legend />
-                </div>
               </div>
               <Timeline />
             </div>

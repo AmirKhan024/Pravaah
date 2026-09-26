@@ -5,6 +5,48 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-26 — Phase 4: the console map — real MapLibre re-tinted, not a hand-drawn copy of the mockup
+
+**Decision:** `FlowMap.tsx` keeps MapLibre and the real DY Patil coordinates exactly as before;
+`tintBasemapLight()` re-tints the same real Carto vector layers (real roads/buildings/water/parks
+at the real location) into the mockup's warm parchment palette, alongside the existing
+`tintBasemapDark()` (renamed, values unchanged) for Night. Gate markers became teardrop pins
+(`pin()`, matching `reference/ui-mockup.html`'s marker language); their label now leads with
+`legendWord()` (plain-language density) before the raw `/m²` number. Added real map chrome: a
+context pill (venue name), a live clock chip (`clockFor()`), zoom/reset, a compass, a legend, and
+a hover tooltip showing each gate's actual capacity (`lanes × laneRate`) and demand (`linkFlow` on
+its screening link) — every one of these reads real `Scenario`/`SimResult` data, none is invented.
+
+**Why not draw the mockup's illustrated city (buildings/parks/water as canvas shapes):** that
+geometry is fictional, hand-tuned for the mockup's own made-up layout. DY Patil's real roads,
+buildings and water are already real vector data from Carto — retinting them keeps the "every
+number/shape comes from something real" property (SOURCE_OF_TRUTH §13) while still adopting the
+mockup's warm illustrated look. This also means Live Ops (`/live`), which renders the same
+`FlowMap` component, gets the whole migration for free — verified via screenshot.
+
+**Bugs found and fixed while wiring the hover tooltip (all via Playwright, not just reasoning):**
+1. The overlay canvas was made interactive (`pointer-events: auto`) to receive hover coordinates,
+   which silently broke MapLibre's own drag-to-pan/scroll-to-zoom underneath it (the overlay now
+   ate all pointer events). Fixed by keeping the canvas `pointer-events-none` and reading hover
+   position through MapLibre's own `map.on('mousemove')` API instead.
+2. A first attempt at that used a DOM listener on the wrapper div, relying on event bubbling from
+   MapLibre's internal canvas — which never fired, because MapLibre stops propagation on its own
+   canvas's pointer events. Switching to `map.on('mousemove'/'mouseout')` (which MapLibre resolves
+   internally, independent of bubbling) fixed it.
+3. Hovering near Gate 1 showed Gate 5's tooltip: the per-frame hover-candidate variable was a
+   single object overwritten by every gate/source zone in the draw loop, so only the *last* one
+   (Gate 5, last in `zones[]`) ever survived to hit-test against. Fixed by collecting all
+   candidates each frame and hit-testing against the nearest one.
+4. The new zoom/compass controls (top-right) and legend (bottom-right) were invisible — not
+   erroring, just visually covered by `Console.tsx`'s own opaque `Readouts`/`RaviCard` overlay
+   (top-right) and `Timeline`'s full-width `bg-ink/92` band (bottom), both of which render after
+   `FlowMap` in the DOM. Moved zoom/compass to top-left (below the context pill, the one corner
+   nothing else claims) and the legend to clear Timeline's height. Left as a known minor gap: the
+   legend's clearance is tuned for `/console`'s Timeline; on `/live` (no Timeline) it leaves a
+   harmless extra gap rather than sitting flush with the bottom edge.
+
+---
+
 ## 2026-09-26 — Cover page hero visual (CoverFlow.tsx): pin markers + theme-aware, not a second map
 
 **Decision:** `components/cover/CoverFlow.tsx` — the live-simulated schematic on `/` (streams

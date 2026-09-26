@@ -4,6 +4,43 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-26 — Simple-UI migration, Phase 4: the console map (FlowMap.tsx)
+
+**Changed**
+- `components/map/FlowMap.tsx`: added `tintBasemapLight()` alongside the renamed
+  `tintBasemapDark()` (values unchanged), re-tinting MapLibre's real Carto vector layers per
+  theme; a `MutationObserver` on `[data-theme]` re-tints live when the header's Light/Night toggle
+  is used mid-session. Replaced the small rotated-square gate marker with a teardrop `pin()`
+  (matching `reference/ui-mockup.html`'s marker language), coloured by real density; its label now
+  reads `legendWord(den) + ' · ' + den.toFixed(1) + '/m²'` instead of just the raw number. Added:
+  a venue-name context pill, a live clock chip, zoom in/out/reset buttons (`map.zoomTo`/refit),
+  a static compass (rotation is locked, `dragRotate:false`), a legend (bottom card, reusing
+  `legendWord()`), and a hover tooltip for gates (real capacity `lanes×laneRate`, real demand from
+  the gate's screening-link `linkFlow`) and transit/parking source zones.
+- `components/console/Console.tsx`: removed the now-duplicated standalone `Legend` component
+  (FlowMap has its own); the Caption row's layout simplified accordingly.
+- `lib/colors.ts`: `legendWord()` (Phase 1) is what the map's labels/legend actually use now.
+
+**Bugs found and fixed during Playwright verification** (see docs/DECISIONS.md for detail): the
+overlay canvas briefly broke MapLibre's own pan/zoom by intercepting pointer events; a DOM-bubbling
+approach to hover coordinates never fired because MapLibre stops propagation on its own canvas
+(fixed via `map.on('mousemove')`); a single hover-candidate variable meant only the last-processed
+gate's tooltip ever showed regardless of which gate was hovered (fixed by testing all candidates
+each frame); and the new zoom/compass/legend controls were initially invisible, covered by
+`Console.tsx`'s own `Readouts`/`RaviCard` overlay (top-right) and `Timeline`'s full-width
+background (bottom) — repositioned to top-left and legend raised to clear Timeline.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 52/52. `git diff --stat -- engine worker`: no changes.
+- Playwright against `npm run dev`, both `/console` and `/live`, both themes: real basemap
+  geometry renders in warm parchment (Light) and the original dark tint (Night); pins, corridors,
+  and readouts all read live `SimResult` data (confirmed values like Gate 1's "280" capacity match
+  `lanes(10) × laneRate(28)` from `engine/scenarios/dyPatil.ts` exactly); zoom/reset buttons and
+  the hover tooltip work end-to-end, not just render; `/live`'s copy of `FlowMap` picked up the
+  whole migration automatically since it's the same component.
+
+---
+
 ## 2026-09-26 — Cover page hero visual: theme-aware, pin-style gate markers
 
 **Changed**

@@ -5,6 +5,29 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-26 — Dynamic Telegram: staying one-way, and one dedup simplification
+
+**Telegram stays one-way, as the brief explicitly asks to note.** `lib/telegram.ts` gained
+`editTelegramReplyMarkup`/`answerCallbackQuery` back in Phase 3 for a possible Acknowledge-button
+webhook, but no webhook route exists to receive a callback, and this pass doesn't add one. **Why:**
+unchanged from the Phase-3 reasoning already on record here — a Telegram webhook cannot be
+registered or tested against `localhost`, and this pass, like Phase 3, has no public HTTPS
+deployment to verify one against. Building it now would mean shipping code with zero of it actually
+verified. If a deployment exists later, the pieces are already in `lib/telegram.ts`.
+
+**`status_changed` alerts once per evening (the first time status reaches Act now), not on every
+calm→watch→act flap.** Considered tracking the previous status and alerting on every transition
+into `act`. **Why not:** the same `sentOrders`-by-title dedupe every other alert here uses is
+"once ever per title," and a title like `Status: Act now` can only naturally represent one event
+under that scheme — re-designing dedupe specifically for this one message type (a resettable,
+time-windowed dedupe) felt like solving a problem the brief didn't actually raise ("send only on
+meaningful change" is satisfied by "the first time it becomes meaningful"), at the cost of a new
+kind of state this pass would be the only thing using. Flagged here rather than silently narrowed:
+if a real event runs long enough that the evening flaps between watch and act several times, ops
+will only be told about the first one.
+
+---
+
 ## 2026-09-26 — Monitor loop: three choices worth explaining
 
 **1. A fired tripwire installs Red Team's precomputed backup directly — it does not ask the

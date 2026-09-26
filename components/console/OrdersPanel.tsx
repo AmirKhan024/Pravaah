@@ -7,7 +7,7 @@
  */
 import { useState } from 'react';
 import { useSlice } from '@/lib/createStore';
-import { log, markOrderSent, orderSentAt, store, toast } from '@/lib/console';
+import { log, sendTelegramAlert, store, toast, type TelegramSendOutcome } from '@/lib/console';
 import { buildOrders, LANGS, nudgeVars, paText, type OrderCard } from '@/lib/messages';
 import { speak } from '@/lib/speak';
 import type { Intervention, Lang, Scenario, SimResult } from '@/engine';
@@ -80,31 +80,18 @@ function CrowdCard({ card }: { card: OrderCard }) {
   );
 }
 
-export interface TelegramSendOutcome {
-  ok: boolean;
-  at?: string;
-  reason?: string;
-}
+export type { TelegramSendOutcome };
 
 /**
- * The one place an order actually gets sent to Telegram. Used by the button below (Guide/Orders
- * tab) and by Live Ops's one-click Approve (which sends automatically, no separate button) — both
- * call this, so there is exactly one fetch/log implementation, not two.
+ * Orders (staff/transport/accommodation/food) — used by the button below (Guide/Orders tab) and by
+ * Live Ops's one-click Approve (which sends automatically, no separate button). Behaviour
+ * unchanged from before the monitor loop existed: no re-wording, logged as 'orders_sent'. Both this
+ * and every monitor-loop alert (lib/telegramMessages.ts) now funnel through lib/console.ts's
+ * sendTelegramAlert() — the one place that actually calls /api/telegram/send and the one shared
+ * `sentOrders` dedupe record, so an order and an alert about the same title can never double-send.
  */
 export async function sendOrderToTelegram(kind: string, title: string, text: string): Promise<TelegramSendOutcome> {
-  try {
-    const r = await fetch('/api/telegram/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, title, text }) }).then((x) => x.json());
-    if (r.ok) {
-      const d = new Date(r.sentAt);
-      const at = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); // 24h, matching the app's clock everywhere else
-      log('orders_sent', `Sent "${title}" to the ops Telegram channel.`, { kind, chars: text.length });
-      markOrderSent(title, at); // one shared record — every surface showing this order now knows it's sent
-      return { ok: true, at };
-    }
-    return { ok: false, reason: r.reason || 'Telegram send failed' };
-  } catch {
-    return { ok: false, reason: 'Could not reach the server' };
-  }
+  return sendTelegramAlert(kind, title, text, 'orders_sent');
 }
 
 /** Staff/transport/accommodation/food orders only — never the crowd message card, which keeps its own Copy/PA/SMS buttons. */

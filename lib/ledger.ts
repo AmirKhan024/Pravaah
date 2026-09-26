@@ -22,7 +22,10 @@ export type LedgerType =
   | 'clock_expired'
   | 'staff_report'
   | 'tripwire_fired'
-  | 'action_stopped_working';
+  | 'action_stopped_working'
+  | 'decision_recorded'
+  | 'action_expiring'
+  | 'status_changed';
 
 export interface LedgerEntry {
   seq: number;

@@ -37,6 +37,14 @@ import { engine, proxy } from './engineClient';
 import { appendLedger, loadLedger, type LedgerEntry, type LedgerType } from './ledger';
 import { bucketStatuses, type BucketId, type BucketInfo } from './buckets';
 import { buildObservedScenario, firedTripwires, isObservedEmpty, mergeObserved, type ActionState } from './monitor';
+import {
+  actionExpiringAlert,
+  actionStoppedWorkingAlert,
+  decisionRecordedAlert,
+  newActionAlert,
+  statusChangedAlert,
+  tripwireFiredAlert,
+} from './telegramMessages';
 
 export type Mode = 'intro' | 'story' | 'live' | 'replay' | 'free';
 export type Drawer = null | 'about' | 'ledger' | 'report' | 'board' | 'chain' | 'redteam' | 'orders' | 'deck' | 'leverWhy' | 'bucket' | 'whatif' | 'liveOrders' | 'observe';
@@ -269,6 +277,7 @@ export function tickForward(dtSec: number) {
   patch.tick = t;
   set(patch);
   checkClock();
+  checkStatusAlert();
   maybeRunMonitor();
 }
 
@@ -407,13 +416,36 @@ export function actionState(label: string, s: ConsoleState = get()): ActionState
   return 'proposed';
 }
 
+const EXPIRING_SOON_MIN = 15;
 function checkClock() {
   const s = get();
   if (s.mode !== 'live' || s.approved || s.replanBusy) return;
   const d = decisionDeadline(s);
-  if (!d || s.tick < d.tick) return;
+  if (!d) return;
+  if (s.tick < d.tick) {
+    // not yet closed, but close enough to warn ops once (dedup is the alert's own title, same
+    // mechanism as every other Telegram send here — see sendTelegramAlert)
+    if (d.tick - s.tick <= EXPIRING_SOON_MIN) {
+      const lever = opsLevers(s).find((l) => l.label === d.label);
+      if (lever) {
+        const a = actionExpiringAlert(s.scn, lever, d.tick, Math.max(0, Math.round(d.tick - s.tick)));
+        sendTelegramAlert(a.kindLabel, a.title, a.text, 'action_expiring', { reword: true, summary: `Warned ops that "${d.label}" is about to close.` });
+      }
+    }
+    return;
+  }
   const closing = (s.board || []).filter((o) => !o.useless && o.deadlineTick <= s.tick && s.expired.indexOf(o.label) < 0).map((o) => o.label);
   expireLevers(closing, Math.floor(s.tick), 'expired');
+}
+
+/** "status changed" alert — fires the first time the evening reaches Act now (the meaningful
+ *  transition ops actually need to know about), deduped for the whole evening by its own title
+ *  like every other alert here. A calm/watch flap in between is not itself alert-worthy. */
+function checkStatusAlert() {
+  const s = get();
+  if (s.mode !== 'live' || opsStatus(s) !== 'act') return;
+  const a = statusChangedAlert('act', 'A move needs a decision now.');
+  sendTelegramAlert(a.kindLabel, a.title, a.text, 'status_changed', { reword: true, summary: 'Told ops the status is now Act now.' });
 }
 
 const MONITOR_INTERVAL_MIN = 15;
@@ -472,13 +504,15 @@ export function runMonitorTick() {
       lastMonitorTick: tick,
       selected: 'Balanced',
     });
-    fired.forEach((t) =>
+    fired.forEach((t) => {
       log('tripwire_fired', `Tripwire: ${t.label} — Red Team already found this breaks the plan ${Math.round(t.failRate * 100)}% of the time. Proposing the backup it found for the worst night.`, {
         key: t.key,
         failRate: t.failRate,
         backup: after,
-      }),
-    );
+      });
+      const a = tripwireFiredAlert(t.label, Math.round(t.failRate * 100), after);
+      sendTelegramAlert(a.kindLabel, a.title, a.text, 'tripwire_fired', { reword: true, summary: `Sent the "${t.label}" tripwire alert to the ops Telegram channel.` });
+    });
     const what = fired.length === 1 ? fired[0].label : fired.map((t) => t.label).join(', ');
     caption(`Observed: ${what}. Pravaah is proposing the backup Red Team already found for a night like this. It has not been approved.`);
   }
@@ -499,6 +533,14 @@ export function runMonitorTick() {
           selected: 'Balanced',
         });
         log('plan_recommended', `Re-ranked from ${clock(tick)} under what's been observed: ${after.join('; ') || 'nothing more to do'}.`, { chosen: after, crushMin: r.crushMin, observed: s.observed });
+        // "new action" — only when the lead move genuinely changed, not on every re-rank that
+        // reconfirms the same one (that would spam ops with a message on every 15-minute tick)
+        if (after[0] && after[0] !== before[0]) {
+          const lever = r.chosen[0];
+          const board = get().board?.find((o) => o.label === lever.label);
+          const a = newActionAlert(scn, lever, board && !board.useless ? board.deadlineTick : null, `Re-ranked from ${clock(tick)} under what's been observed.`);
+          sendTelegramAlert(a.kindLabel, a.title, a.text, 'plan_recommended', { reword: true });
+        }
       })
       .catch(() => set({ monitorBusy: false, lastMonitorTick: tick }));
   }
@@ -510,7 +552,11 @@ export function runMonitorTick() {
     const status: ConsoleState['approvedStatus'] = worse > 3 ? 'stopped-working' : 'still-working';
     if (status !== s.approvedStatus) {
       set({ approvedStatus: status });
-      if (status === 'stopped-working') log('action_stopped_working', `"${s.approved.name}" stopped working: ${s.approved.result.crushMin} → ${shown.crushMin} dangerous minutes under what's now been observed.`, { was: s.approved.result.crushMin, now: shown.crushMin });
+      if (status === 'stopped-working') {
+        log('action_stopped_working', `"${s.approved.name}" stopped working: ${s.approved.result.crushMin} → ${shown.crushMin} dangerous minutes under what's now been observed.`, { was: s.approved.result.crushMin, now: shown.crushMin });
+        const a = actionStoppedWorkingAlert(s.approved.name, s.approved.result.crushMin, shown.crushMin);
+        sendTelegramAlert(a.kindLabel, a.title, a.text, 'action_stopped_working', { reword: true });
+      }
     }
   }
 }
@@ -541,6 +587,72 @@ export function orderSentAt(title: string): string | undefined {
 }
 export function markOrderSent(title: string, at: string) {
   set((s) => ({ sentOrders: { ...s.sentOrders, [title]: at } }));
+}
+function unmarkOrderSent(title: string) {
+  set((s) => {
+    const next = { ...s.sentOrders };
+    delete next[title];
+    return { sentOrders: next };
+  });
+}
+
+export interface TelegramSendOutcome {
+  ok: boolean;
+  at?: string;
+  reason?: string;
+  deduped?: boolean;
+}
+
+/**
+ * The one place any message — an order or a monitor-loop alert — actually reaches Telegram
+ * (`/api/telegram/send`, the same route Phase 3's orders always used). De-duplicated by title in
+ * the same shared `sentOrders` record orders already use (see docs/DECISIONS.md, "sent state
+ * moved into the shared store" — the exact bug that fix prevents would reappear here if alerts
+ * kept their own separate "sent" tracking). `reword`, when set, passes the fixed text through the
+ * existing number-safe placeholder scheme (app/api/llm/polish) for tone only; on any failure,
+ * timeout or offline it silently keeps the fixed template — never blocks the send on it.
+ *
+ * The title is reserved in `sentOrders` SYNCHRONOUSLY, before any `await` — not just after a
+ * successful send. Some callers (checkStatusAlert(), maybeRunMonitor()) run on every simulated
+ * frame; without an immediate, synchronous reservation, several calls for the same title in the
+ * same tick would all pass the "already sent?" check before the first call's fetch resolves, and
+ * all really send — caught live during this pass: a naive after-the-fact mark sent "Status: Act
+ * now" to the real ops chat 28 times in one short test. The reservation is released again if the
+ * send actually fails, so a real failure can still be retried later.
+ */
+export async function sendTelegramAlert(
+  kind: string,
+  title: string,
+  text: string,
+  ledgerType: LedgerType,
+  opts?: { summary?: string; reword?: boolean; lang?: 'mr' | 'hi' | 'en' },
+): Promise<TelegramSendOutcome> {
+  if (orderSentAt(title)) return { ok: true, at: orderSentAt(title), deduped: true };
+  markOrderSent(title, '…'); // reserved — see above
+  let finalText = text;
+  if (opts?.reword) {
+    try {
+      const r = await fetch('/api/llm/polish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, lang: opts.lang || 'en' }) }).then((x) => x.json());
+      if (r.ok && typeof r.text === 'string') finalText = r.text;
+    } catch {
+      /* keep the fixed template */
+    }
+  }
+  try {
+    const r = await fetch('/api/telegram/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, title, text: finalText }) }).then((x) => x.json());
+    if (r.ok) {
+      const d = new Date(r.sentAt);
+      const at = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      markOrderSent(title, at);
+      log(ledgerType, opts?.summary || `Sent "${title}" to the ops Telegram channel.`, { kind, chars: finalText.length });
+      return { ok: true, at };
+    }
+    unmarkOrderSent(title);
+    return { ok: false, reason: r.reason || 'Telegram send failed' };
+  } catch {
+    unmarkOrderSent(title);
+    return { ok: false, reason: 'Could not reach the server' };
+  }
 }
 
 /** Live Ops "Why?": opens the same per-lever detail the Timing tab's drawer shows, for one lever. */
@@ -576,6 +688,8 @@ export function skipLever(label: string) {
   const s = get();
   if (s.approved || s.replanBusy || s.expired.indexOf(label) >= 0) return;
   expireLevers([label], Math.floor(s.tick), 'skipped');
+  const a = decisionRecordedAlert(label, 'skipped', Math.floor(s.tick), s.scn);
+  sendTelegramAlert(a.kindLabel, a.title, a.text, 'decision_recorded', { reword: true });
 }
 
 /** approve: the plan is applied from NOW — late decisions only reach people who have not left yet */
@@ -617,7 +731,7 @@ export function approve(acceptOverride?: Record<string, number>, roomNote?: stri
     drawer: null,
   });
   caption(`Same evening, same ${comma(s.scn.zones.find((z) => z.type === 'venue')?.capacity || 0)} people. This time you acted at ${clock(at)}.`);
-  if (!s.approved)
+  if (!s.approved) {
     log('plan_approved', `Approved "${plan.name}" at ${clock(at)}: ${s.base.crushMin} → ${result.crushMin} dangerous minutes, ₹${result.rupees}.`, {
       name: plan.name,
       at,
@@ -626,7 +740,13 @@ export function approve(acceptOverride?: Record<string, number>, roomNote?: stri
       rupees: result.rupees,
       missed: result.missed,
     });
-  else if (acceptOverride) log('room_result', roomNote || 'Re-ran the plan with the room’s choices.', { acceptOverride, crushMin: result.crushMin });
+    // one decision per action (SOURCE_OF_TRUTH: "approval is per ACTION, not per plan"), even
+    // though a first approval still applies the whole recommended set at once
+    plan.chosen.forEach((c) => {
+      const a = decisionRecordedAlert(c.label, 'approved', at, s.scn);
+      sendTelegramAlert(a.kindLabel, a.title, a.text, 'decision_recorded', { reword: true });
+    });
+  } else if (acceptOverride) log('room_result', roomNote || 'Re-ran the plan with the room’s choices.', { acceptOverride, crushMin: result.crushMin });
 }
 
 export function replayOutcome() {
@@ -659,6 +779,10 @@ export function approveReplacement() {
     levers: ivs.map((c) => c.label),
     crushMin: result.crushMin,
     rupees: result.rupees,
+  });
+  ivs.forEach((c) => {
+    const a = decisionRecordedAlert(c.label, 'approved', at, scn);
+    sendTelegramAlert(a.kindLabel, a.title, a.text, 'decision_recorded', { reword: true });
   });
 }
 

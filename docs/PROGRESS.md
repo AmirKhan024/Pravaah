@@ -4,6 +4,68 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-26 — Live control room, slice (d): dynamic Telegram
+
+The brief's six message types, each built from a structured payload — a lever, a `SimResult`, a
+deadline, a fail rate — never free text, and reusing the existing number-safe wording endpoint
+rather than inventing a second one.
+
+**Changed**
+- **`lib/telegramMessages.ts`** (new): six pure builders — `newActionAlert`, `actionExpiringAlert`,
+  `statusChangedAlert`, `tripwireFiredAlert`, `actionStoppedWorkingAlert`, `decisionRecordedAlert`
+  — each takes real arguments (a `Lever`, a deadline tick, a crush-minute count, a fail rate) and
+  returns a fixed-template `{title, text}`; nothing here calls an LLM or invents a number. 7 tests
+  in `lib/__tests__/telegramMessages.test.ts`.
+- **`lib/console.ts`**: `sendTelegramAlert()` — the **one** place any message, order or monitor-loop
+  alert, actually reaches Telegram (`/api/telegram/send`, the same route Phase 3's orders always
+  used), de-duplicated in the same shared `sentOrders` record orders already use. `reword`, when
+  passed, sends the fixed text through `/api/llm/polish` (the existing placeholder-mask-and-reject
+  scheme — nothing new built for this) for tone only, silently keeping the fixed template on any
+  failure/timeout/offline. `OrdersPanel.tsx`'s pre-existing `sendOrderToTelegram()` now delegates to
+  it (unchanged behaviour: no reword, same log type) instead of having its own separate `fetch` —
+  genuinely one send path, not two that happen to agree today. Wired at six trigger points, all of
+  them state *transitions* already computed in slices (b)/(c), not new polling: a tripwire firing
+  (§(c)), a re-rank's lead lever changing (`new_action`), a deadline ≤15 min out and not yet warned
+  about (`action_expiring`, in `checkClock()`), the first time an evening reaches Act now
+  (`status_changed`, deliberately *not* re-alerted on every calm/watch/act flap after that — see
+  DECISIONS.md), `approvedStatus` flipping to stopped-working (§(b)), and every lever in an approved
+  plan (`decision_recorded` — "approval is per ACTION, not per plan," so a multi-lever approval
+  sends one message per lever, matching that same brief line). `LedgerType` gained
+  `decision_recorded`, `action_expiring`, `status_changed` so the Black Box's own record of "what
+  did we know, and when" distinguishes these from the underlying `plan_approved`/`clock_expired`
+  entries that already existed.
+- Crowd-facing messages: unchanged, still never touch this path — `buildOrders()`'s `crowd`-kind
+  cards have no Telegram button, same as every phase since Phase 3. One-way: unchanged, no webhook
+  exists to receive a reply (noted again in DECISIONS.md as the brief asks).
+
+**A real duplicate-send bug, caught live — the second one in this project's history, same root
+cause class as the one Phase-1's `roomVotes` fix and the Live-Ops `sentOrders`-in-shared-store
+decision both already exist to prevent.** The first version of `sendTelegramAlert()` checked
+`sentOrders[title]` before sending and only wrote to it *after* a successful send. `checkStatusAlert()`
+runs on every simulated frame while the status is `act`; before the first call's `fetch` resolved,
+every subsequent frame's call also saw an empty `sentOrders[title]` and also sent. **28 real
+messages landed in the live ops Telegram chat in one short test run** before this was caught.
+Fixed by reserving the title in `sentOrders` synchronously, before any `await` — releasing the
+reservation again only if the send genuinely fails, so a real failure can still be retried.
+Caught the same way as every bug this pass has found: driving the real thing (Playwright capturing
+every `/api/telegram/send` request) and reading what actually happened, not the diff. Re-verified:
+the same scenario that produced 28 sends now produces exactly one.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 76/76 (7 new).
+- Live, via Playwright capturing every `/api/telegram/send` call against the real bot/chat: ran a
+  full Red Team → rain report → tripwire fire → approve sequence and confirmed exactly one real
+  send per distinct title (`Status: Act now`, `Tripwire: heavy rain`, the pre-existing staff order,
+  and one `Decision recorded` send per lever in the approved plan — 7 calls, 7 distinct titles, all
+  200s) instead of the 28 the bug produced. Opened the Black Box and read back a coherent, sealed
+  timeline of the whole sequence — staff report → tripwire fired → re-ranked → approved "Plan B" →
+  orders sent → four decisions recorded, each entry naming the real Telegram send it caused.
+
+**Still open** — slice (e), missing scenarios (postponement, cab/rickshaw as their own mode, VIP as
+a real cohort), opt-in only, if time remains.
+
+---
+
 ## 2026-09-26 — Live control room, slices (b)+(c): the monitor loop, action lifecycle, tripwires
 
 Watch → Detect → Re-plan → Ask, built as a thin layer on the engine's existing "full re-simulate,

@@ -47,7 +47,7 @@ export default function Home() {
           <Link href="/console" className="rounded-lg px-3 py-1.5 hover:bg-panel-2 hover:text-text">
             Full console
           </Link>
-          <Link href="/live" className="ml-2 rounded-lg border border-brass-dim px-3.5 py-1.5 text-brass hover:bg-[#1d1c14]">
+          <Link href="/live" className="ml-2 rounded-lg border border-brass-dim px-3.5 py-1.5 text-brass hover:bg-[var(--tone-brass)]">
             Live Ops
           </Link>
         </nav>

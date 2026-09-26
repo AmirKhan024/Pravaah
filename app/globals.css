@@ -1,7 +1,65 @@
 @import 'tailwindcss';
 
-/* SOURCE_OF_TRUTH §13 — calm, serious, control-room. Brass is the only accent. Red only for danger. */
+/*
+ * Design tokens (docs/DECISIONS.md, 2026-09-26 — "old dark control-room theme → new Light
+ * default + Night mode"). Every token below is a CSS custom property Tailwind v4's utilities
+ * (bg-ink, text-dim, border-brass-dim, …) reference at runtime — so switching `[data-theme]`
+ * on <html> re-themes every existing class without touching component markup. Night mode's
+ * values are the ORIGINAL SOURCE_OF_TRUTH §13 control-room palette, preserved byte-for-byte
+ * below (see the `[data-theme='dark']` block) so toggling to Night reproduces the app exactly
+ * as it looked before this migration. Light is the new default (approved mockup,
+ * reference/ui-mockup.html); the density ramp (--color-d0..d5) and Ravi/brand accent hue are
+ * intentionally theme-invariant data colours, not decoration, so they are not overridden below.
+ */
 @theme {
+  /* Light (default) — reference/ui-mockup.html */
+  --color-ink: #f5f2ec;
+  --color-ink-deep: #ede8dd;
+  --color-panel: #ffffff;
+  --color-panel-2: #f6f3ec;
+  --color-line: #e6e1d7;
+  --color-line-soft: #efebe2;
+  --color-text: #143a35;
+  --color-dim: #5b6f6b;
+  --color-dimmer: #93a19d;
+  --color-brass: #0f766e;
+  --color-brass-dim: #b7d6cf;
+  --color-brass-glow: #0b4f4a;
+  --color-accent: #e8912d;
+  --color-accent-dim: #f2cb98;
+  --color-accent-glow: #c97a22;
+  --color-danger: #e5484d;
+  --color-danger-soft: #c23b3f;
+  --color-safe: #2fa37a;
+
+  --tone-brass: #f0faf7;
+  --tone-brass-strong: #e3f1ec;
+  --tone-brass-strong-hover: #d8ece5;
+  --tone-danger: #fde6e6;
+  --tone-danger-strong: #fbd9d9;
+  --tone-danger-urgent: #f8c9c9;
+  --tone-safe: #e3f6ee;
+
+  --shadow-card: 0 10px 30px -12px rgba(20, 58, 53, 0.25);
+
+  /* theme-invariant: the density ramp is a data encoding, not chrome (SOURCE_OF_TRUTH §13) */
+  --color-d0: #35555f;
+  --color-d1: #3f7a6b;
+  --color-d2: #9aa24b;
+  --color-d3: #c79338;
+  --color-d4: #cc5f2c;
+  --color-d5: #b02d1e;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-jbmono), ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+  --font-display: var(--font-serif), Georgia, 'Times New Roman', serif;
+  --font-deva: var(--font-deva), var(--font-inter), sans-serif;
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Night — the original SOURCE_OF_TRUTH §13 control-room palette, unchanged in value */
+:root[data-theme='dark'] {
   --color-ink: #101715;
   --color-ink-deep: #0b1110;
   --color-panel: #16201e;
@@ -14,26 +72,28 @@
   --color-brass: #c9a961;
   --color-brass-dim: #8e7742;
   --color-brass-glow: #e8c87a;
-  --color-d0: #35555f;
-  --color-d1: #3f7a6b;
-  --color-d2: #9aa24b;
-  --color-d3: #c79338;
-  --color-d4: #cc5f2c;
-  --color-d5: #b02d1e;
+  --color-accent: #c9a961;
+  --color-accent-dim: #8e7742;
+  --color-accent-glow: #e8c87a;
   --color-danger: #e0634f;
   --color-danger-soft: #f0a594;
   --color-safe: #6fb39a;
 
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
-  --font-mono: var(--font-jbmono), ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
-  --font-display: var(--font-serif), Georgia, 'Times New Roman', serif;
-  --font-deva: var(--font-deva), var(--font-inter), sans-serif;
+  --tone-brass: #1d1c14;
+  --tone-brass-strong: #1b1a12;
+  --tone-brass-strong-hover: #211f16;
+  --tone-danger: #221512;
+  --tone-danger-strong: #211310;
+  --tone-danger-urgent: #241612;
+  --tone-safe: #122019;
 
-  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --shadow-card: none;
+
+  color-scheme: dark;
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,

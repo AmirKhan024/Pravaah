@@ -4,6 +4,44 @@ Append a dated entry after every phase/task, per `SOURCE_OF_TRUTH.md` §14.11. N
 
 ---
 
+## 2026-09-26 — Simple-UI migration, Phase 1: design tokens (Light default + Night mode)
+
+**Changed**
+- `app/globals.css`: the `@theme` block's colors are now the Light palette (from
+  `reference/ui-mockup.html`, the approved mockup) instead of the old dark control-room palette;
+  a new `:root[data-theme='dark']` block holds the original values unchanged, selected via
+  `document.documentElement.dataset.theme`. Added `--tone-brass`/`--tone-danger`/`--tone-safe` (+
+  `-strong`/`-urgent`/`-hover` variants) and `--shadow-card`, replacing 27 hardcoded tone-wash hex
+  literals across 13 component files (`bg-[#1d1c14]` → `bg-[var(--tone-brass)]`, etc.) with no
+  visual change in Night mode.
+- `lib/theme.ts` (new): `getTheme()`/`setTheme()` (localStorage-only, per-viewer) and
+  `THEME_BOOTSTRAP`, an inline script run in `app/layout.tsx`'s `<head>` before hydration so there's
+  no flash of the wrong theme. `<html>` needs `suppressHydrationWarning` for this (the standard
+  fix — the script's DOM mutation runs before React hydrates and isn't part of React's own render
+  of `<html>`, so it isn't a real mismatch).
+- `lib/colors.ts`: `denRGB()`'s clamp bound was a hardcoded `5.8` duplicating `engine/constants.ts`'s
+  `JAM` — now imports `CRUSH`/`JAM` instead (§14: don't duplicate engine constants in UI code). Added
+  `legendWord()`, a separate, additive vocabulary ("Comfortable"/"Getting busy"/"Too crowded"/
+  "Packed") for the map's own legend/gate tags (Phase 4) — `denWords()` and its existing call sites
+  are untouched.
+- No component's className, props, or behavior changed in this phase — only which hex value each
+  existing token/utility resolves to per theme.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 52/52. `git diff --stat -- engine worker`: no changes.
+- Playwright screenshots of `/console` (`scripts/shot.mjs`), Light (default) and Night
+  (`localStorage.setItem('pravaah:theme','dark')` + reload): Night is visually identical to the
+  pre-migration app (gold accent, dark panels, dark map chrome); Light renders a coherent cream/
+  white/teal theme with no hydration errors and no layout breakage, even though no component's
+  border-radius/spacing/copy has been touched yet (Phases 2–3). The map itself (`FlowMap.tsx`)
+  still renders its original dark MapLibre basemap in both themes — that's Phase 4, not this one.
+
+**Deferred to later phases**: shell/status restyle (Phase 2), five-step console copy + card radii
+(Phase 3), map Light/Night themes + controls (Phase 4), Live Ops/other routes (Phase 5), full QA
+pass incl. contrast/reduced-motion/screenshots across all 8 states × 2 themes (Phase 6).
+
+---
+
 ## 2026-09-25 — Live Ops: a new default landing view, recomposed from existing pieces
 
 **Changed.** New route `/live`, reusing the same global store, `approve()`, the engine worker, and

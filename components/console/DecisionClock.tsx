@@ -36,9 +36,9 @@ export function Band({ tone, onClick, children }: { tone: 'idle' | 'brass' | 'sa
         'no-print flex w-full items-center gap-6 border-b px-6 py-3 text-left transition-colors',
         onClick && 'cursor-pointer',
         tone === 'idle' && 'border-line bg-panel/60',
-        tone === 'brass' && 'border-brass-dim/70 bg-[#1b1a12] hover:bg-[#211f16]',
+        tone === 'brass' && 'border-brass-dim/70 bg-[var(--tone-brass-strong)] hover:bg-[var(--tone-brass-strong-hover)]',
         tone === 'safe' && 'border-safe/30 bg-[#0f1c16]',
-        tone === 'danger' && 'border-danger/50 bg-[#211310]',
+        tone === 'danger' && 'border-danger/50 bg-[var(--tone-danger-strong)]',
       )}
     >
       {children}
@@ -132,7 +132,7 @@ export default function DecisionClock() {
       title="How this deadline was worked out"
       className={cx(
         'flex w-full items-center gap-6 border-b px-6 py-3 text-left transition-colors',
-        urgent ? 'animate-[pulse-danger_1.6s_ease-in-out_infinite] border-danger/60 bg-[#241612]' : 'border-brass-dim/70 bg-[#1b1a12] hover:bg-[#211f16]',
+        urgent ? 'animate-[pulse-danger_1.6s_ease-in-out_infinite] border-danger/60 bg-[var(--tone-danger-urgent)]' : 'border-brass-dim/70 bg-[var(--tone-brass-strong)] hover:bg-[var(--tone-brass-strong-hover)]',
       )}
     >
       <span className="flex shrink-0 flex-col leading-none">

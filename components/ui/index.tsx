@@ -41,9 +41,9 @@ export function Card({ children, className, tone }: { children: ReactNode; class
       className={cx(
         'rounded-xl border p-4',
         (!tone || tone === 'default') && 'border-line bg-panel-2/70',
-        tone === 'brass' && 'border-brass-dim/60 bg-[#1d1c14]',
-        tone === 'danger' && 'border-danger/40 bg-[#221512]',
-        tone === 'safe' && 'border-safe/35 bg-[#122019]',
+        tone === 'brass' && 'border-brass-dim/60 bg-[var(--tone-brass)]',
+        tone === 'danger' && 'border-danger/40 bg-[var(--tone-danger)]',
+        tone === 'safe' && 'border-safe/35 bg-[var(--tone-safe)]',
         className,
       )}
     >

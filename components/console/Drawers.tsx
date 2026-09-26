@@ -127,7 +127,7 @@ function RedTeamDrawer() {
         </div>
       ) : null}
 
-      <div className="mt-6 rounded-xl border border-danger/40 bg-[#221512] p-4">
+      <div className="mt-6 rounded-xl border border-danger/40 bg-[var(--tone-danger)] p-4">
         <Kicker>The worst night we found</Kicker>
         <div className="text-[15px] font-medium leading-snug">{rt.worst.labels.join(', ') || 'an ordinary night'}</div>
         <div className="mt-2 text-[13px] text-dim">
@@ -137,7 +137,7 @@ function RedTeamDrawer() {
       </div>
 
       {rt.backup ? (
-        <div className="mt-3 rounded-xl border border-brass-dim/60 bg-[#1d1c14] p-4">
+        <div className="mt-3 rounded-xl border border-brass-dim/60 bg-[var(--tone-brass)] p-4">
           <Kicker>Backup plan for that night</Kicker>
           <ul className="flex flex-col gap-1 text-[13px]">
             {rt.backup.chosen.map((c) => (
@@ -250,7 +250,7 @@ function LedgerDrawer() {
         </Button>
       </div>
       {check ? (
-        <div className={cx('mt-3 rounded-lg border px-3 py-2 text-[13px]', check.ok ? 'border-safe/40 bg-[#122019] text-safe' : 'border-danger/40 bg-[#221512] text-danger-soft')}>
+        <div className={cx('mt-3 rounded-lg border px-3 py-2 text-[13px]', check.ok ? 'border-safe/40 bg-[var(--tone-safe)] text-safe' : 'border-danger/40 bg-[var(--tone-danger)] text-danger-soft')}>
           {check.ok ? `✓ All ${s.ledger.length} entries check out. Nothing has been changed.` : `✕ Entry ${check.seq} does not match its seal.${check.tamper ? ' We changed one number in a copy, and the chain caught it. The real ledger is untouched.' : ''}`}
         </div>
       ) : null}

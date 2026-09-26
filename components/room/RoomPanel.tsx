@@ -84,7 +84,7 @@ export default function RoomPanel() {
           </div>
 
           {bc ? (
-            <div className="rounded-2xl border border-brass-dim/60 bg-[#1d1c14] p-5 rise">
+            <div className="rounded-2xl border border-brass-dim/60 bg-[var(--tone-brass)] p-5 rise">
               <div className="flex items-baseline justify-between">
                 <span className="kicker !mb-0 !text-brass">{left > 0 ? 'Message sent · phones are deciding' : 'Voting closed'}</span>
                 <span className="num text-[28px] font-semibold text-brass">{left > 0 ? `0:${String(left).padStart(2, '0')}` : '0:00'}</span>

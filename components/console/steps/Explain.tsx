@@ -52,7 +52,7 @@ export default function Explain() {
       </div>
 
       {mismatch ? (
-        <div className="rounded-xl border border-brass-dim/60 bg-[#1d1c14] p-4">
+        <div className="rounded-xl border border-brass-dim/60 bg-[var(--tone-brass)] p-4">
           <div className="kicker mb-1 !text-brass">Mismatch, not shortage</div>
           <p className="text-[13.5px] leading-relaxed text-dim">
             Two different fixes each remove every dangerous minute. The stadium has enough gates. The crowd is pointed at one of them. <b className="text-text">You do not need more capacity. You need the crowd to use the capacity it already has.</b>

@@ -112,7 +112,7 @@ export default function Replay() {
       </header>
 
       <div className="mx-auto max-w-[1320px] px-6 sm:px-10">
-        <div className="rounded-xl border border-brass-dim/60 bg-[#1d1c14] px-5 py-3 text-[14px] text-brass">{meta.label}</div>
+        <div className="rounded-xl border border-brass-dim/60 bg-[var(--tone-brass)] px-5 py-3 text-[14px] text-brass">{meta.label}</div>
 
         <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
           <div>
@@ -196,7 +196,7 @@ export default function Replay() {
           <h2 className="mt-2 font-display text-[36px] leading-tight">The cheapest change was upstream, not at the gate.</h2>
           <div className="mt-6 grid gap-3 sm:grid-cols-4">
             {variants.map((v, i) => (
-              <div key={v.label} className={cx('rounded-xl border p-4', i === 0 ? 'border-danger/40 bg-[#221512]' : v.crush < variants[0].crush * 0.2 ? 'border-safe/40 bg-[#122019]' : 'border-line bg-panel-2/60')}>
+              <div key={v.label} className={cx('rounded-xl border p-4', i === 0 ? 'border-danger/40 bg-[var(--tone-danger)]' : v.crush < variants[0].crush * 0.2 ? 'border-safe/40 bg-[var(--tone-safe)]' : 'border-line bg-panel-2/60')}>
                 <div className="text-[14.5px] font-semibold">{v.label}</div>
                 <div className="mt-1 min-h-[36px] text-[12px] leading-snug text-dim">{v.note}</div>
                 <div className={cx('num mt-3 text-[30px] font-semibold', i === 0 ? 'text-danger-soft' : v.crush < variants[0].crush * 0.2 ? 'text-safe' : 'text-text')}>{comma(v.crush)}</div>

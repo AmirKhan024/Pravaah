@@ -24,7 +24,7 @@ function WhatChangedTab() {
   const peak = (x: number[]) => Math.max(...x).toFixed(1);
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-xl border border-safe/35 bg-[#122019] p-4">
+      <div className="rounded-xl border border-safe/35 bg-[var(--tone-safe)] p-4">
         <div className="kicker mb-2 !text-safe">What changes · re-run from {clock(a.tick)}</div>
         <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-[13px]">
           <span className="text-dim">Dangerous minutes</span>
@@ -46,7 +46,7 @@ function WhatChangedTab() {
         {a.roomNote ? <div className="mt-2 text-[12px] text-brass">{a.roomNote} Re-run with the room&apos;s choices.</div> : null}
       </div>
 
-      <div className="rounded-xl border border-brass-dim/60 bg-[#1d1c14] p-4">
+      <div className="rounded-xl border border-brass-dim/60 bg-[var(--tone-brass)] p-4">
         <div className="flex items-center justify-between">
           <span className="kicker !mb-0 !text-brass">The Room</span>
           {room.id ? <Pill tone="brass">{room.people} phones</Pill> : null}

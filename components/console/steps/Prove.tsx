@@ -28,7 +28,7 @@ function PlanCard({ name, active, onPick }: { name: ProfileName; active: boolean
   const r = planResult(s.scn, s.p.chosen, s.waits);
   const rec = name === 'Zero rupees';
   return (
-    <button onClick={onPick} className={cx('w-full rounded-xl border p-3.5 text-left transition-colors', active ? 'border-brass bg-[#1d1c14]' : 'border-line bg-panel-2/50 hover:border-brass-dim')}>
+    <button onClick={onPick} className={cx('w-full rounded-xl border p-3.5 text-left transition-colors', active ? 'border-brass bg-[var(--tone-brass)]' : 'border-line bg-panel-2/50 hover:border-brass-dim')}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-[14.5px] font-semibold">{name}</span>
@@ -60,7 +60,7 @@ function PlanTab() {
   return (
     <div className="flex flex-col gap-3">
       {s.replan ? (
-        <div className="rounded-xl border border-danger/40 bg-[#221512] p-4 rise">
+        <div className="rounded-xl border border-danger/40 bg-[var(--tone-danger)] p-4 rise">
           <div className="kicker mb-1 !text-danger-soft">Plan B · from {clock(s.replan.atTick)}</div>
           <p className="text-[13px] leading-relaxed text-dim">
             The free moves closed. This is the best plan still possible: <Delta from={s.base.crushMin} to={s.replan.crushMin} unit="dangerous min" /> for {s.replan.rupees ? inr(s.replan.rupees) : '₹0'}.{' '}

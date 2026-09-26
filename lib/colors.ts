@@ -1,3 +1,5 @@
+import { CRUSH, JAM } from '@/engine/constants';
+
 // density ramp (SOURCE_OF_TRUTH §13) — people per m² → colour
 const RAMP: [number, [number, number, number]][] = [
   [0, [0x2c, 0x47, 0x50]],
@@ -5,11 +7,11 @@ const RAMP: [number, [number, number, number]][] = [
   [2, [0x9a, 0xa2, 0x4b]],
   [3, [0xc7, 0x93, 0x38]],
   [4, [0xcc, 0x5f, 0x2c]],
-  [5.8, [0xb0, 0x2d, 0x1e]],
+  [JAM, [0xb0, 0x2d, 0x1e]],
 ];
 
 export function denRGB(d: number): [number, number, number] {
-  d = Math.max(0, Math.min(5.8, d || 0));
+  d = Math.max(0, Math.min(JAM, d || 0));
   let i = 0;
   while (i < RAMP.length - 2 && d > RAMP[i + 1][0]) i++;
   const [a0, A] = RAMP[i],
@@ -21,6 +23,18 @@ export function denRGB(d: number): [number, number, number] {
 export function denColor(d: number, a = 1): string {
   const [r, g, b] = denRGB(d);
   return `rgba(${r},${g},${b},${a})`;
+}
+
+/**
+ * Map legend / gate-marker wording (SOURCE_OF_TRUTH §14, reference/ui-mockup.html legend).
+ * Distinct from denWords() below, which is the existing narration vocabulary used throughout
+ * the five-step console and Live Ops — this one is only for the map's own short legend/tag.
+ */
+export function legendWord(d: number): string {
+  if (d >= JAM * 0.93) return 'Packed';
+  if (d >= CRUSH) return 'Too crowded';
+  if (d >= CRUSH * 0.5) return 'Getting busy';
+  return 'Comfortable';
 }
 
 /** plain-language name for a density (copy rule: idea first, number second) */

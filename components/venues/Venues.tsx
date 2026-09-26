@@ -135,7 +135,7 @@ export default function Venues() {
             <div className="kicker">Cached, always work offline</div>
             <div className="flex flex-col gap-2">
               {imported ? (
-                <button onClick={() => setSel('import')} className={cx('rounded-xl border p-3.5 text-left', sel === 'import' ? 'border-brass bg-[#1d1c14]' : 'border-line bg-panel-2/50 hover:border-brass-dim')}>
+                <button onClick={() => setSel('import')} className={cx('rounded-xl border p-3.5 text-left', sel === 'import' ? 'border-brass bg-[var(--tone-brass)]' : 'border-line bg-panel-2/50 hover:border-brass-dim')}>
                   <div className="flex items-center gap-2 text-[14px] font-semibold">
                     {imported.spec.venueLabel} <Pill tone="brass">live import</Pill>
                   </div>
@@ -143,7 +143,7 @@ export default function Venues() {
                 </button>
               ) : null}
               {VENUES.map((v) => (
-                <button key={v.id} onClick={() => pick(v.id)} className={cx('rounded-xl border p-3.5 text-left', sel === v.id ? 'border-brass bg-[#1d1c14]' : 'border-line bg-panel-2/50 hover:border-brass-dim')}>
+                <button key={v.id} onClick={() => pick(v.id)} className={cx('rounded-xl border p-3.5 text-left', sel === v.id ? 'border-brass bg-[var(--tone-brass)]' : 'border-line bg-panel-2/50 hover:border-brass-dim')}>
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-[14px] font-semibold">{v.name}</span>
                     <span className="num text-[11.5px] text-dim">{comma(v.capacity)}</span>
@@ -278,7 +278,7 @@ export default function Venues() {
               ) : null}
             </div>
           ) : sel === 'dyPatil' ? (
-            <Link href="/console" className="rounded-xl border border-brass-dim bg-[#1d1c14] p-4 text-[13px] text-brass">
+            <Link href="/console" className="rounded-xl border border-brass-dim bg-[var(--tone-brass)] p-4 text-[13px] text-brass">
               DY Patil is the hand-built flagship. Open it in the console for the full five-step rehearsal →
             </Link>
           ) : null}

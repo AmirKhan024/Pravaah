@@ -5,6 +5,37 @@ This is not a changelog (see `docs/PROGRESS.md` for that) — only entries where
 
 ---
 
+## 2026-09-26 — Simple-UI migration, Phase 1: theme tokens as CSS variables + Night as a strict preservation of the old palette
+
+**Decision:** every color in `app/globals.css`'s `@theme` block (background/panel/line/text/dim/brass/
+danger/safe, plus new `--tone-*` washes) is now redefined under `:root[data-theme='dark']` using the
+**exact original hex values** from before this migration. Light (the new default, from the approved
+`reference/ui-mockup.html`) becomes the `:root` base. `--color-brass` keeps its name in both themes
+even though it now means "interactive teal" in Light and "gold accent" in Night — same *role*
+(primary interactive/selected-state color), different hue per theme, so no component className had
+to change, only the 27 places across 13 files that hardcoded a literal tone-wash hex (e.g.
+`bg-[#1d1c14]`) instead of a token — those became `bg-[var(--tone-brass)]` etc.
+
+**Why:** old-dark-control-room → new-Light-default-plus-Night-mode is an explicit requirement. Doing
+it as CSS custom properties (which Tailwind v4's `@theme` already compiles utilities like `bg-ink`
+against) means Night mode is provably identical to the pre-migration app — verified with
+Playwright screenshots of `/console` before and after, pixel-equivalent — while every future
+component only needs writing once and gets both themes for free.
+
+**Trade-off accepted:** the density ramp (`--color-d0..d5` in CSS, `RAMP` in `lib/colors.ts`) and
+`denWords()`'s vocabulary are deliberately left theme-invariant — they're a data encoding read off
+`engine/constants.ts`'s `CRUSH`/`JAM`, not chrome, matching how `reference/ui-mockup.html`'s own
+`col()` function never changes with its Light/Night toggle either. `legendWord()` (new, in
+`lib/colors.ts`) is a separate, additive vocabulary for the map's own legend/gate tags — it does not
+touch or replace `denWords()`, which remains the console/Live-Ops narration language used
+elsewhere and has existing call sites that were not part of this phase's scope.
+
+**Also found:** `lib/createStore.ts` exists (the initial brief for this migration assumed it
+didn't); it's the generic store factory `lib/console.ts` builds `ConsoleState` on top of. No change
+needed there — noted here only because a stale assumption about the codebase was corrected.
+
+---
+
 ## 2026-09-25 — Live Ops: "sent" state moved into the shared store, not left per-component
 
 **Decision:** whether an order has been sent to Telegram, and when, now lives in

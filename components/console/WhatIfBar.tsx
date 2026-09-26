@@ -37,7 +37,7 @@ export default function WhatIfBar() {
             onClick={() => (s.w?.id === w.id ? clearWhatIf() : runWhatIf(w.id))}
             className={cx(
               'rounded-full border px-3 py-1 text-[12px] backdrop-blur-[2px] transition-colors',
-              s.w?.id === w.id ? 'border-brass bg-[#1d1c14] text-brass' : 'border-line bg-ink/80 text-dim hover:border-brass-dim hover:text-text',
+              s.w?.id === w.id ? 'border-brass bg-[var(--tone-brass)] text-brass' : 'border-line bg-ink/80 text-dim hover:border-brass-dim hover:text-text',
             )}
           >
             {w.label}

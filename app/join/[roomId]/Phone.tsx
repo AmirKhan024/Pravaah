@@ -230,7 +230,7 @@ export default function Phone({ roomId }: { roomId: string }) {
             </div>
           ) : v.broadcast ? (
             v.broadcast.message ? (
-              <div className="mt-2 rounded-2xl border border-brass bg-[#1d1c14] p-5 rise">
+              <div className="mt-2 rounded-2xl border border-brass bg-[var(--tone-brass)] p-5 rise">
                 <div className="flex items-center justify-between">
                   <span className="kicker !mb-0 !text-brass">{t.from}</span>
                   {!v.vote ? (

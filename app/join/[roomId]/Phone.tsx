@@ -6,8 +6,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Lang } from '@/engine';
-import type { PhoneView } from '@/lib/roomTypes';
 import { devaDigits } from '@/lib/messages';
+import type { GroupResponse, ResponseKind } from '@/lib/roomResponses';
+import type { PhoneView } from '@/lib/roomTypes';
 import { supabaseBrowser } from '@/lib/supabase';
 import { Logo } from '@/components/ui';
 
@@ -18,10 +19,27 @@ const T: Record<Lang, Record<string, string>> = {
     youAre: 'You are one of',
     people: 'people',
     tonight: 'tonight.',
+    entering: 'You are entering the crowd',
+    origin: 'Origin',
+    arrival: 'Arrival',
+    transport: 'Transport',
+    route: 'Initial route',
+    group: 'Group',
+    groupOf: 'people, including you',
+    enter: 'Enter the crowd',
     waiting: 'Waiting for the control room…',
     phones: 'phones in the crowd',
     from: 'Event control',
     closes: 'closes in',
+    accept: "I'll use it",
+    decline: "I'll stay on my route",
+    moved: 'I already moved',
+    tooLateNote: 'The window has closed, but you can still answer.',
+    tooLateBtn: 'Let control room know',
+    groupQ: 'Will your group follow this?',
+    groupAll: 'All of us',
+    groupIndividual: 'Only me',
+    groupNone: 'No',
     thanks: 'Sent. Your answer is now part of the simulation.',
     tally: 'said yes so far',
     none: 'No message for your group tonight. Your route is fine.',
@@ -35,10 +53,27 @@ const T: Record<Lang, Record<string, string>> = {
     youAre: 'आज रात आप',
     people: 'लोगों में से एक हैं',
     tonight: '',
+    entering: 'आप भीड़ में शामिल हो रहे हैं',
+    origin: 'कहाँ से',
+    arrival: 'पहुँचने का समय',
+    transport: 'साधन',
+    route: 'शुरुआती रास्ता',
+    group: 'समूह',
+    groupOf: 'लोग, आप सहित',
+    enter: 'भीड़ में शामिल हों',
     waiting: 'कंट्रोल रूम का इंतज़ार…',
     phones: 'फ़ोन भीड़ में',
     from: 'इवेंट कंट्रोल',
     closes: 'बंद होगा',
+    accept: 'हाँ, वही रास्ता लूँगा',
+    decline: 'नहीं, अपने रास्ते पर रहूँगा',
+    moved: 'मैं पहले ही जा चुका हूँ',
+    tooLateNote: 'समय खत्म हो गया, फिर भी आप जवाब दे सकते हैं।',
+    tooLateBtn: 'कंट्रोल रूम को बताएँ',
+    groupQ: 'क्या आपका समूह भी यही करेगा?',
+    groupAll: 'हम सब',
+    groupIndividual: 'सिर्फ़ मैं',
+    groupNone: 'नहीं',
     thanks: 'भेज दिया। आपका जवाब अब सिमुलेशन का हिस्सा है।',
     tally: 'ने अब तक हाँ कहा',
     none: 'आज आपके समूह के लिए कोई संदेश नहीं। आपका रास्ता ठीक है।',
@@ -52,10 +87,27 @@ const T: Record<Lang, Record<string, string>> = {
     youAre: 'आज रात्री तुम्ही',
     people: 'लोकांपैकी एक आहात',
     tonight: '',
+    entering: 'तुम्ही गर्दीत सामील होत आहात',
+    origin: 'कुठून',
+    arrival: 'पोहोचण्याची वेळ',
+    transport: 'साधन',
+    route: 'सुरुवातीचा मार्ग',
+    group: 'गट',
+    groupOf: 'लोक, तुमच्यासह',
+    enter: 'गर्दीत सामील व्हा',
     waiting: 'कंट्रोल रूमची वाट पाहत आहोत…',
     phones: 'फोन गर्दीत',
     from: 'इव्हेंट कंट्रोल',
     closes: 'बंद होईल',
+    accept: 'हो, तोच मार्ग घेतो',
+    decline: 'नाही, माझ्या मार्गावर राहतो',
+    moved: 'मी आधीच निघालो',
+    tooLateNote: 'वेळ संपली, तरी तुम्ही उत्तर देऊ शकता.',
+    tooLateBtn: 'कंट्रोल रूमला कळवा',
+    groupQ: 'तुमचा गटही हेच करेल का?',
+    groupAll: 'आम्ही सर्व',
+    groupIndividual: 'फक्त मी',
+    groupNone: 'नाही',
     thanks: 'पाठवलं. तुमचं उत्तर आता सिम्युलेशनचा भाग आहे.',
     tally: 'जणांनी आतापर्यंत हो म्हटलं',
     none: 'आज तुमच्या गटासाठी संदेश नाही. तुमचा मार्ग ठीक आहे.',
@@ -91,8 +143,19 @@ export default function Phone({ roomId }: { roomId: string }) {
   const [lost, setLost] = useState(false);
   const [offline, setOffline] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [entered, setEntered] = useState(false);
+  const [pendingResponse, setPendingResponse] = useState<ResponseKind | null>(null);
   const pid = useRef<string>('');
   const buzzed = useRef<number>(0);
+  const seenSent = useRef<number>(0);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('pravaah_entered_' + roomId) === '1') setEntered(true);
+    } catch {
+      /* ignore */
+    }
+  }, [roomId]);
 
   useEffect(() => {
     pid.current = getPid();
@@ -169,6 +232,35 @@ export default function Phone({ roomId }: { roomId: string }) {
     }
   }, [v?.broadcast?.sentAt, v?.broadcast?.message]);
 
+  // tell the server this phone has genuinely received the message — a real, server-timestamped
+  // "seen" moment (§10), fired once per broadcast, distinct from the vibrate-once effect above
+  useEffect(() => {
+    const sent = v?.broadcast?.sentAt || 0;
+    if (sent && sent !== seenSent.current && v?.broadcast?.message && !v?.vote) {
+      seenSent.current = sent;
+      call({ action: 'seen' });
+    }
+  }, [v?.broadcast?.sentAt, v?.broadcast?.message, v?.vote, call]);
+
+  const enterCrowd = () => {
+    setEntered(true);
+    try {
+      localStorage.setItem('pravaah_entered_' + roomId, '1');
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const respond = (response: ResponseKind, groupResponse: GroupResponse | null) => {
+    setPendingResponse(null);
+    call({ action: 'vote', response, groupResponse });
+  };
+
+  const pickResponse = (response: ResponseKind) => {
+    if ((v?.me?.groupSize || 1) > 1) setPendingResponse(response);
+    else respond(response, null);
+  };
+
   const choose = (l: Lang) => {
     setLang(l);
     try {
@@ -210,6 +302,29 @@ export default function Phone({ roomId }: { roomId: string }) {
         </div>
       ) : !v ? (
         <div className="m-auto text-[14px] text-dim">{offline ? t.offline : t.joining + ' ' + roomId + '…'}</div>
+      ) : !entered && v.cohort ? (
+        <div className="m-auto flex w-full max-w-[380px] flex-col gap-4 rise">
+          <h1 className="text-center font-display text-[32px] leading-tight">{t.entering}</h1>
+          <div className="flex flex-col rounded-2xl border border-line bg-panel-2 p-4">
+            {(
+              [
+                [t.origin, v.cohort.originLabel || v.cohort.label],
+                [t.arrival, v.cohort.arrivalLabel || '—'],
+                [t.transport, v.cohort.transportMode || '—'],
+                [t.group, `${num(v.me?.groupSize || 1)} ${t.groupOf}`],
+                [t.route, v.cohort.initialRoute || '—'],
+              ] as [string, string][]
+            ).map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between border-b border-line-soft/60 py-2.5 text-[15px] last:border-0">
+                <span className="text-dim">{label}</span>
+                <span className="num font-semibold">{value}</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={enterCrowd} className="h-16 rounded-2xl bg-brass text-[18px] font-semibold text-ink active:scale-[.98]">
+            {t.enter}
+          </button>
+        </div>
       ) : (
         <div className="mt-8 flex flex-1 flex-col gap-5">
           {v.cohort ? (
@@ -233,7 +348,7 @@ export default function Phone({ roomId }: { roomId: string }) {
               <div className="mt-2 rounded-2xl border border-brass bg-[var(--tone-brass)] p-5 rise">
                 <div className="flex items-center justify-between">
                   <span className="kicker !mb-0 !text-brass">{t.from}</span>
-                  {!v.vote ? (
+                  {!v.vote && now < v.broadcast.closesAt ? (
                     <span className="num text-[13px] text-brass">
                       {t.closes} {num(Math.max(0, Math.ceil((v.broadcast.closesAt - now) / 1000)))}s
                     </span>
@@ -241,13 +356,38 @@ export default function Phone({ roomId }: { roomId: string }) {
                 </div>
                 <div className="mt-3 text-[28px] font-semibold leading-tight">{v.broadcast.message.head}</div>
                 <p className="mt-2 text-[17px] leading-relaxed text-dim">{v.broadcast.message.body}</p>
-                {!v.vote ? (
-                  <div className="mt-5 grid grid-cols-2 gap-3">
-                    <button onClick={() => call({ action: 'vote', choice: 'yes' })} className="h-16 rounded-xl bg-brass text-[18px] font-semibold text-ink active:scale-[.98]">
+                {!v.vote && pendingResponse ? (
+                  <div className="mt-5 flex flex-col gap-3">
+                    <div className="text-[15px] text-dim">{t.groupQ}</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button onClick={() => respond(pendingResponse, 'all')} className="h-14 rounded-xl bg-brass text-[13.5px] font-semibold text-ink active:scale-[.98]">
+                        {t.groupAll}
+                      </button>
+                      <button onClick={() => respond(pendingResponse, 'individual')} className="h-14 rounded-xl border border-line text-[13.5px] text-text active:scale-[.98]">
+                        {t.groupIndividual}
+                      </button>
+                      <button onClick={() => respond(pendingResponse, 'none')} className="h-14 rounded-xl border border-line text-[13.5px] text-text active:scale-[.98]">
+                        {t.groupNone}
+                      </button>
+                    </div>
+                  </div>
+                ) : !v.vote && now >= v.broadcast.closesAt ? (
+                  <div className="mt-5 flex flex-col gap-3">
+                    <div className="text-[14px] text-dim">{t.tooLateNote}</div>
+                    <button onClick={() => respond('too_late', null)} className="h-14 rounded-xl border border-line text-[16px] text-text active:scale-[.98]">
+                      {t.tooLateBtn}
+                    </button>
+                  </div>
+                ) : !v.vote ? (
+                  <div className="mt-5 flex flex-col gap-3">
+                    <button onClick={() => pickResponse('accept')} className="h-16 rounded-xl bg-brass text-[18px] font-semibold text-ink active:scale-[.98]">
                       {v.broadcast.message.yes}
                     </button>
-                    <button onClick={() => call({ action: 'vote', choice: 'no' })} className="h-16 rounded-xl border border-line text-[18px] text-text active:scale-[.98]">
+                    <button onClick={() => pickResponse('decline')} className="h-14 rounded-xl border border-line text-[16px] text-text active:scale-[.98]">
                       {v.broadcast.message.no}
+                    </button>
+                    <button onClick={() => pickResponse('already_moved')} className="h-14 rounded-xl border border-line-soft text-[14.5px] text-dim active:scale-[.98]">
+                      {t.moved}
                     </button>
                   </div>
                 ) : (

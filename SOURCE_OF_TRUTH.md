@@ -350,15 +350,15 @@ Exact values are in `reference/prototype.html` (`const SCENARIO_A`). Copy them v
 
 **Flow:**
 1. Organiser clicks "Open the room" → a room is created, QR code + short URL shown full-screen.
-2. Phone opens `/join/[roomId]` (PWA, no login). Picks language (Marathi/हिंदी/English). Is assigned a cohort by weighted round-robin over cohorts that the recommended plan nudges (e.g. Nerul rail, Seawoods rail, cab arrivals). Screen: "You are one of 24,000 people on the harbour line into Nerul tonight."
-3. Organiser approves a plan containing nudges → server broadcasts the message to each phone in its cohort, in its language. Phone vibrates (`navigator.vibrate`) and shows the message with Accept / Decline and a countdown.
-4. Votes stream back. Console shows live tally per cohort.
-5. After the countdown (e.g. 20 s) or when organiser clicks "Run with the room", compute `acceptOverride[cohort] = accepts / (accepts + declines)` (ignore cohorts with < 2 votes; fall back to the model `p`). Re-run `simulate()` with the override. Map animates the new evening. Show "The room said yes X%. The model predicted Y%."
+2. Phone opens `/join/[roomId]` (PWA, no login). Picks language (Marathi/हिंदी/English). Is assigned a cohort by weighted round-robin over cohorts that the recommended plan nudges (e.g. Nerul rail, Seawoods rail, cab arrivals), and sees a real attendee profile derived from that cohort's actual scenario data — origin, arrival time, transport mode, initial route (gate) — plus a seeded 1-4 group size, before "Enter the crowd" reveals the waiting screen.
+3. Organiser approves a plan containing nudges → server broadcasts the message to each phone in its cohort, in its language. Phone vibrates (`navigator.vibrate`), tells the server it has seen the message (a real server timestamp, `seenAt`), and shows the message with three explicit choices — **accept**, **decline**, **already moved** — plus a countdown; answering after the countdown closes is reclassified server-side as **too late** regardless of what was tapped, and silence past the countdown is counted as **no response (ignored)**. Phones with a group size above 1 get one follow-up question ("will your group follow this?": all / only me / no).
+4. Responses stream back. Console shows a live breakdown (accepted/declined/already moved/too late/no response, with percentages), a median response time once there are enough timed responses, and a per-cohort behaviour table with an estimated compliance rate.
+5. After the countdown (e.g. 20 s) or when organiser clicks "Run with the room", compute an observed compliance rate per cohort (accept/already-moved count as compliant; decline/ignore/too-late do not) and blend it with the model's own `p`: below 5 settled responses the room carries **no** weight (identical to the model), ramping linearly to full weight at 20 or more. That blended value becomes `acceptOverride[cohort]`. Re-run `simulate()` with the override. Map animates the new evening. Show "The room said yes X%. The model predicted Y%."
 6. Each phone then shows its personal outcome (what happened to "people like you").
 
-**Tech:** Supabase Realtime channels (or Socket.io server). Tables: `rooms`, `participants(id, room_id, cohort, lang)`, `votes(participant_id, plan_id, choice, at)`. Anonymous participant id in localStorage.
+**Tech:** Supabase Realtime channels. Tables: `rooms`, `participants(id, room_id, cohort, lang, group_size)`, `votes(participant_id, plan_id, choice, response, group_response, seen_at, responded_at, response_delay_ms)` — `choice` (yes/no) is kept for backward compatibility and derived from the richer `response`. Anonymous participant id in localStorage.
 
-**Fallbacks:** five team phones pre-joined; a "simulate room" button that fakes votes if the network dies; demo works fully without the room.
+**Fallbacks:** five team phones pre-joined; a "simulate room" button that fakes a realistic response distribution (built off the model's own `p`, seeded and reproducible, clearly labelled `simulated: true`) if the network dies; demo works fully without the room.
 
 ### 8.2 Decision Clock (P0)
 

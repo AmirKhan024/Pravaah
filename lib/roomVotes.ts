@@ -9,6 +9,7 @@
  * broadcast — that is true for real phones (the Yes/No buttons don't render otherwise) and must
  * also be enforced here for simulated phones and, defensively, on the server.
  */
+import { COMPLIANCE_WEIGHT, type ResponseKind } from './roomResponses';
 import type { RoomSnapshot } from './roomTypes';
 
 export function votableParticipantIds(snap: Pick<RoomSnapshot, 'participants' | 'broadcast'>): Set<string> {
@@ -54,4 +55,89 @@ export function tallyByCohort(snap: Pick<RoomSnapshot, 'participants' | 'votes' 
     else b.no++;
   }
   return out;
+}
+
+export interface ResponseCounts {
+  joined: number;
+  accepted: number;
+  declined: number;
+  alreadyMoved: number;
+  tooLate: number;
+  ignored: number;
+  /** eligible, message received, no answer yet, and the window hasn't closed */
+  pending: number;
+}
+
+const emptyCounts = (): ResponseCounts => ({ joined: 0, accepted: 0, declined: 0, alreadyMoved: 0, tooLate: 0, ignored: 0, pending: 0 });
+
+function bump(counts: ResponseCounts, response: ResponseKind) {
+  if (response === 'accept') counts.accepted++;
+  else if (response === 'decline') counts.declined++;
+  else if (response === 'already_moved') counts.alreadyMoved++;
+  else if (response === 'too_late') counts.tooLate++;
+  else counts.ignored++;
+}
+
+/**
+ * Per-cohort response breakdown (§14/§16): explicit answers plus a computed "ignored" for anyone
+ * who has a message, never answered, and the countdown has closed. Silence before the countdown
+ * closes is "pending", not "ignored" — they may still answer.
+ */
+export function responseBreakdown(snap: Pick<RoomSnapshot, 'participants' | 'votes' | 'broadcast'>, now: number): Record<string, ResponseCounts> {
+  const votable = votableParticipantIds(snap);
+  const out: Record<string, ResponseCounts> = {};
+  const closesAt = snap.broadcast?.closesAt ?? Infinity;
+  for (const p of snap.participants) {
+    if (!votable.has(p.id)) continue;
+    const counts = (out[p.cohort] ||= emptyCounts());
+    counts.joined++;
+    const v = snap.votes[p.id];
+    // a "seen" placeholder (seenAt recorded, no choice/response yet) is not a response — only an
+    // actual response or choice (legacy fixtures) counts, never bare presence in the votes map
+    const response: ResponseKind | undefined = v?.response ?? (v?.choice ? (v.choice === 'yes' ? 'accept' : 'decline') : undefined);
+    if (response) bump(counts, response);
+    else if (now > closesAt) counts.ignored++;
+    else counts.pending++;
+  }
+  return out;
+}
+
+export function sumResponseCounts(byCohort: Record<string, ResponseCounts>): ResponseCounts {
+  const total = emptyCounts();
+  for (const c of Object.values(byCohort)) {
+    total.joined += c.joined;
+    total.accepted += c.accepted;
+    total.declined += c.declined;
+    total.alreadyMoved += c.alreadyMoved;
+    total.tooLate += c.tooLate;
+    total.ignored += c.ignored;
+    total.pending += c.pending;
+  }
+  return total;
+}
+
+/**
+ * Observed compliance for one cohort, weighted by COMPLIANCE_WEIGHT over *settled* responses only
+ * (explicit answers plus computed ignores) — participants still waiting on the countdown never
+ * dilute the estimate (§11/§17).
+ */
+export function observedAcceptance(byCohort: Record<string, ResponseCounts>, cohortId: string): { n: number; rate: number } {
+  const c = byCohort[cohortId];
+  if (!c) return { n: 0, rate: 0 };
+  const n = c.accepted + c.declined + c.alreadyMoved + c.tooLate + c.ignored;
+  if (!n) return { n: 0, rate: 0 };
+  const compliant = c.accepted * COMPLIANCE_WEIGHT.accept + c.alreadyMoved * COMPLIANCE_WEIGHT.already_moved + c.declined * COMPLIANCE_WEIGHT.decline + c.tooLate * COMPLIANCE_WEIGHT.too_late + c.ignored * COMPLIANCE_WEIGHT.ignore;
+  return { n, rate: compliant / n };
+}
+
+/** Median response delay (ms) over votes with both a seen and a responded timestamp (§10/§15). */
+export function responseTiming(snap: Pick<RoomSnapshot, 'votes'>): { medianMs: number | null; n: number } {
+  const delays = Object.values(snap.votes)
+    .map((v) => v.responseDelayMs)
+    .filter((d): d is number => typeof d === 'number' && d >= 0)
+    .sort((a, b) => a - b);
+  if (!delays.length) return { medianMs: null, n: 0 };
+  const mid = Math.floor(delays.length / 2);
+  const medianMs = delays.length % 2 ? delays[mid] : (delays[mid - 1] + delays[mid]) / 2;
+  return { medianMs, n: delays.length };
 }

@@ -94,3 +94,25 @@ drop policy if exists "anon can read participants via realtime" on participants;
 create policy "anon can read participants via realtime" on participants for select using (true);
 drop policy if exists "anon can read votes via realtime" on votes;
 create policy "anon can read votes via realtime" on votes for select using (true);
+
+-- Room-realism upgrade: richer attendee profiles and response states (additive only, §28/§34 of
+-- the room-upgrade brief — no drops, no new tables; `choice` is kept for backward compatibility
+-- and derived from `response`).
+
+alter table participants add column if not exists group_size integer not null default 1;
+
+alter table votes alter column choice drop not null;
+alter table votes drop constraint if exists votes_choice_check;
+alter table votes add constraint votes_choice_check check (choice is null or choice in ('yes', 'no'));
+
+alter table votes add column if not exists response text;
+alter table votes drop constraint if exists votes_response_check;
+alter table votes add constraint votes_response_check check (response is null or response in ('accept', 'decline', 'ignore', 'too_late', 'already_moved'));
+
+alter table votes add column if not exists group_response text;
+alter table votes drop constraint if exists votes_group_response_check;
+alter table votes add constraint votes_group_response_check check (group_response is null or group_response in ('all', 'individual', 'none'));
+
+alter table votes add column if not exists seen_at timestamptz;
+alter table votes add column if not exists responded_at timestamptz;
+alter table votes add column if not exists response_delay_ms integer;

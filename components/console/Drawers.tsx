@@ -4,7 +4,7 @@ import { useSlice } from '@/lib/createStore';
 import { clock, liveBuckets, opsLevers, store } from '@/lib/console';
 import { planResult } from '@/lib/planCache';
 import { verifyLedger, type LedgerEntry } from '@/lib/ledger';
-import { BOARD_CHECKS, candidates, comma, feasible, inr, leverWorth, type BoardOption, type Lever, type RedTeamNight } from '@/engine';
+import { BOARD_CHECKS, candidates, comma, feasible, inr, leverWorth, RAVI, type BoardOption, type Lever, type RedTeamNight } from '@/engine';
 import { Button, cx, Delta, Kicker, Pill, Row } from '@/components/ui';
 import type { BucketStatus } from '@/lib/buckets';
 import WhatIfBar from './WhatIfBar';
@@ -282,7 +282,7 @@ function LedgerDrawer() {
 }
 
 function ReportDrawer() {
-  const s = useSlice(store, (s) => ({ base: s.base, a: s.approved, scn: s.scn, rc: s.raviCur, rg: s.raviGhost, ledger: s.ledger.length, rt: s.redTeam }));
+  const s = useSlice(store, (s) => ({ base: s.base, a: s.approved, scn: s.scn, rc: s.raviCur, rg: s.raviGhost, raviLabel: s.raviLabel, ledger: s.ledger.length, rt: s.redTeam }));
   const r = s.a?.result || s.base;
   const peak = (x: number[]) => Math.max(...x).toFixed(1);
   return (
@@ -298,7 +298,7 @@ function ReportDrawer() {
       {s.rg ? (
         <div className="mt-5 rounded-xl border border-line bg-panel-2/60 p-4 text-[13px] leading-relaxed text-dim">
           <Kicker>One person, followed through both evenings</Kicker>
-          <p>Ravi Sharma reaches Nerul at 19:00 with his nine-year-old daughter.</p>
+          <p>{s.scn.id === 'dyPatil' ? `${RAVI.name} reaches Nerul at ${clock(RAVI.release)} with his nine-year-old daughter.` : `Someone from "${s.raviLabel}" reaches the gate around ${clock(s.scn.showStartTick)}.`}</p>
           <p className="mt-1">
             If you did nothing: he stands still for <b className="num text-text">{s.rg.waited}</b> min, in a crowd of <b className="num text-text">{s.rg.worst.toFixed(1)}</b>/m², and gets in at <b className="num text-text">{clock(s.rg.inside)}</b>.
           </p>

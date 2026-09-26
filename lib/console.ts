@@ -18,12 +18,15 @@ import {
   WHATIFS,
   type AblationRow,
   type BoardOption,
+  type Confidence,
+  type DataField,
   type EnsembleResult,
   type Intervention,
   type Lever,
   type ProfileName,
   type RedTeamResult,
   type RejectedRow,
+  type ResourceRow,
   type Scenario,
   type SimOptions,
   type SimResult,
@@ -102,6 +105,10 @@ export interface ConsoleState {
   whatIf: { id: WhatIfId | 'custom'; label: string; say: string; patch?: WhatIfPatch; none: SimResult; withPlan: SimResult | null; source?: string } | null;
   raviCur: Trace;
   raviGhost: Trace | null;
+  /** tick the followed-person map marker (Ravi for the flagship, this scenario's biggest cohort otherwise) appears */
+  raviRelease: number;
+  /** which cohort raviCur/raviGhost follow — the label to show when the scenario isn't the flagship */
+  raviLabel: string;
   ledger: LedgerEntry[];
   /** order title -> "HH:MM" it was sent to Telegram at. One shared source of truth, so a lever
    *  sent via Live Ops's one-click Approve and the same order shown in the Guide/Orders tab (or
@@ -135,17 +142,69 @@ export interface ConsoleState {
 
   caption: string;
   toast: string;
+
+  /* ---- data-driven scenarios (an event head's own data, not the flagship prototype) ---- */
+  /** 'flagship' = the hand-authored dyPatil prototype; 'sample' = the bundled illustrative fixture; 'custom' = the event head's own CSVs/form */
+  dataSource: 'flagship' | 'sample' | 'custom';
+  dataFields: DataField[];
+  dataConfidence: Confidence | null;
+  resources: ResourceRow[];
 }
 
-const BASE_SCN = dyPatil;
+/** loaded once via loadScenario(); everything a data-driven scenario carries beyond the Scenario itself */
+export interface ScenarioBundle {
+  scenario: Scenario;
+  source: 'sample' | 'custom';
+  fields?: DataField[];
+  confidence?: Confidence | null;
+  resources?: ResourceRow[];
+}
+
+const SCENARIO_KEY = 'pravaah:scenario:v1';
+function readStoredBundle(): ScenarioBundle | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(SCENARIO_KEY);
+    if (!raw) return null;
+    const b = JSON.parse(raw) as ScenarioBundle;
+    if (!b?.scenario?.zones?.length) return null;
+    return b;
+  } catch {
+    return null;
+  }
+}
+function writeStoredBundle(b: ScenarioBundle | null) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (b) window.localStorage.setItem(SCENARIO_KEY, JSON.stringify(b));
+    else window.localStorage.removeItem(SCENARIO_KEY);
+  } catch {
+    /* private-browsing/quota — the scenario just won't survive a reload */
+  }
+}
+
+const STORED_BUNDLE = readStoredBundle();
+const BASE_SCN = STORED_BUNDLE?.scenario ?? dyPatil;
 /** the rehearsal pauses here: the map is calm, and Pravaah already knows how the evening ends */
 export const STORY_STOP = 230;
 
-function initial(): ConsoleState {
-  const waits = probeWaits(BASE_SCN);
-  const base = simulate(BASE_SCN, [], { waits });
+/** who the console/live "follow one person" trace follows: Ravi for the flagship, otherwise this
+ *  scenario's biggest cohort — never a name or cohort id from another venue's data. */
+function focusCohortId(scn: Scenario): string {
+  if (scn.id === 'dyPatil') return RAVI.cohort;
+  return [...scn.cohorts].sort((a, b) => b.size - a.size)[0]?.id ?? '';
+}
+function focusRelease(scn: Scenario): number {
+  if (scn.id === 'dyPatil') return RAVI.release;
+  const c = scn.cohorts.find((x) => x.id === focusCohortId(scn));
+  return c ? Math.max(0, Math.round(c.mean)) : 0;
+}
+
+function initial(scn: Scenario = BASE_SCN, bundle: ScenarioBundle | null = STORED_BUNDLE): ConsoleState {
+  const waits = probeWaits(scn);
+  const base = simulate(scn, [], { waits });
   return {
-    scn: BASE_SCN,
+    scn,
     waits,
     base,
     cur: base,
@@ -170,8 +229,10 @@ function initial(): ConsoleState {
     replanBusy: false,
     approved: null,
     whatIf: null,
-    raviCur: tracePerson(BASE_SCN, base, personPath(BASE_SCN, base), RAVI.release),
+    raviCur: tracePerson(scn, base, personPath(scn, base, focusCohortId(scn)), focusRelease(scn)),
     raviGhost: null,
+    raviRelease: focusRelease(scn),
+    raviLabel: scn.cohorts.find((c) => c.id === focusCohortId(scn))?.label ?? '',
     ledger: [],
     sentOrders: {},
     drawer: null,
@@ -187,6 +248,11 @@ function initial(): ConsoleState {
     expiredReason: {},
     caption: '',
     toast: '',
+
+    dataSource: scn.id === 'dyPatil' ? 'flagship' : bundle?.source ?? 'custom',
+    dataFields: bundle?.fields ?? [],
+    dataConfidence: bundle?.confidence ?? null,
+    resources: bundle?.resources ?? [],
   };
 }
 
@@ -195,6 +261,25 @@ const get = store.getState;
 const set = store.setState;
 
 export const clock = (t: number) => clockFor(get().scn, t);
+
+/** Hands a loaded scenario (from /setup — CSVs, the bundled sample, or the quick-start form) to the
+ *  whole app: /live and /console both read the same store, so this is the one seam that makes
+ *  "an event head's own data" replace the flagship prototype everywhere at once. Persists to
+ *  localStorage (never sent to a server) so the choice survives a reload. */
+export function loadScenario(bundle: ScenarioBundle) {
+  writeStoredBundle(bundle);
+  booted = false;
+  set(initial(bundle.scenario, bundle));
+  boot();
+}
+
+/** back to the hand-authored DY Patil demo */
+export function resetToFlagship() {
+  writeStoredBundle(null);
+  booted = false;
+  set(initial(dyPatil, null));
+  boot();
+}
 export const viewTick = (s: ConsoleState = get()) => Math.floor(s.peek ?? s.tick);
 
 /* ---------------- ledger ---------------- */

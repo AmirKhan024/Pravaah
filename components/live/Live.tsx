@@ -11,7 +11,6 @@ import { useEffect } from 'react';
 import { useSlice } from '@/lib/createStore';
 import { boot, rehearse, skipStory, store } from '@/lib/console';
 import { useSimTicker } from '@/lib/useSimTicker';
-import { RAVI } from '@/engine';
 import FlowMap from '@/components/map/FlowMap';
 import Drawers from '@/components/console/Drawers';
 import Toast from '@/components/console/Toast';
@@ -52,6 +51,7 @@ export default function Live() {
   useSimTicker();
   useEscToClose();
   const scnName = useSlice(store, (s) => s.scn.name);
+  const scnId = useSlice(store, (s) => s.scn.id ?? '');
 
   return (
     <div className="grid h-dvh grid-rows-[48px_auto_minmax(0,1fr)_auto] overflow-hidden bg-ink">
@@ -77,10 +77,10 @@ export default function Live() {
       <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_340px]">
         <main className="relative min-h-0 overflow-hidden">
           <FlowMap
-            fitKey="dyPatil"
+            fitKey={scnId}
             getState={() => {
               const s = store.getState();
-              return { scn: s.scn, cur: s.cur, ghost: s.ghost, tick: s.peek ?? s.tick, raviCur: s.raviCur, raviRelease: RAVI.release };
+              return { scn: s.scn, cur: s.cur, ghost: s.ghost, tick: s.peek ?? s.tick, raviCur: s.raviCur, raviRelease: s.raviRelease };
             }}
           />
         </main>

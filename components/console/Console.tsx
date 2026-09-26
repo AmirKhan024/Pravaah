@@ -9,7 +9,6 @@ import { useSlice } from '@/lib/createStore';
 import { boot, goStep, store } from '@/lib/console';
 import { openRoom, roomStore } from '@/lib/room';
 import { useSimTicker } from '@/lib/useSimTicker';
-import { RAVI } from '@/engine';
 import FlowMap from '@/components/map/FlowMap';
 import { cx, Logo } from '@/components/ui';
 import DecisionClock from './DecisionClock';
@@ -45,7 +44,9 @@ function useStoryCaptions() {
       if (s.mode === 'story') {
         let idx = -1;
         for (let i = 0; i < SCRIPT.length; i++) if (s.tick >= SCRIPT[i].t) idx = i;
-        const text = idx >= 0 ? SCRIPT[idx].x : '';
+        // the rehearsal script narrates the flagship (DY Patil) walkthrough by name; a data-driven
+        // scenario gets a calm blank caption here rather than another venue's gate/station names.
+        const text = s.scn.id === 'dyPatil' && idx >= 0 ? SCRIPT[idx].x : '';
         if (text !== s.caption) store.setState({ caption: text });
       }
       raf = requestAnimationFrame(loop);
@@ -144,6 +145,7 @@ export default function Console() {
   useKeys();
   useEffect(() => boot(), []);
   const top = useSlice(store, (s) => ({ name: s.scn.name, ledger: s.ledger.length, mode: s.mode }));
+  const scnId = useSlice(store, (s) => s.scn.id ?? '');
   const room = useSlice(roomStore, (r) => ({ id: r.id, n: r.snap?.participants.length || 0 }));
 
   return (
@@ -186,10 +188,10 @@ export default function Console() {
 
         <main className="relative min-h-0 overflow-hidden">
           <FlowMap
-            fitKey="dyPatil"
+            fitKey={scnId}
             getState={() => {
               const s = store.getState();
-              return { scn: s.scn, cur: s.cur, ghost: s.ghost, tick: s.peek ?? s.tick, raviCur: s.raviCur, raviRelease: RAVI.release };
+              return { scn: s.scn, cur: s.cur, ghost: s.ghost, tick: s.peek ?? s.tick, raviCur: s.raviCur, raviRelease: s.raviRelease };
             }}
           />
           <div className="pointer-events-none absolute inset-0 flex flex-col">

@@ -44,6 +44,9 @@ export function OwnerVenueScreen() {
             <Link href="/owner/registrations" className="hover:text-text">
               Registrations →
             </Link>
+            <Link href="/owner/documents" className="hover:text-text">
+              Safety documents →
+            </Link>
             <Link href="/live" className="hover:text-text">
               Live Ops →
             </Link>

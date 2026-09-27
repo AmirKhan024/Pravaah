@@ -502,3 +502,57 @@ this context (the claimed→document-checked→verified ladder itself is Slice 4
 `OwnerTrust`, not redefined here).
 
 ---
+
+## 2026-09-27 — Safety-document check (Slice 4): two real bugs caught live, and the scope calls made
+
+**"4 checkable fields," not "one row per gate."** The brief lists "capacity, gate lanes or widths,
+number of exits, parking spaces" as the fields to check — read as 4 flat, venue-level numbers (not
+a per-gate lane breakdown), matching the whole app's own "max 4 numbers visible at once" UI
+philosophy and making a document's own phrasing ("14 security screening lanes are provided across
+the venue's entrances") the natural, single figure to check against, rather than forcing a
+document to somehow state each gate's lane count separately. `gateLanes`/`parkingSpaces` compare
+against the venue's own **totals** (`totalGateLanes`/`totalParkingSpaces` in `lib/owner/store.ts`);
+`capacity`/`exits` are single fields.
+
+**Added `OwnerVenue.exits`, a paperwork-only field.** The engine has no exits/egress model
+(SOURCE_OF_TRUTH's own documented gap — "the simulation currently models arrival only"), so unlike
+capacity/gate-lanes/parking (which all feed `buildCsvInput` and therefore the simulation), `exits`
+never reaches `simulate()`. This is deliberate, not an oversight: a safety-document check is a
+paperwork/compliance check ("Pravaah checks that your numbers match your papers"), not a claim that
+the number itself changes crowd risk.
+
+**Bug #1, caught live: `pdf-parse` failed on every real PDF upload in dev**, with "Setting up fake
+worker failed: Cannot find module '...pdf.worker.mjs'". `pdf-parse` wraps `pdfjs-dist`, which
+resolves its worker via a relative file path at runtime; Turbopack bundling the route into a chunk
+breaks that path (a known category of issue for worker-based packages under Next.js bundlers) even
+though the exact same code works fine in a plain Node script outside of Next.js — confirmed by
+testing `pdf-parse` standalone first (worked), then isolating the failure to the bundled API route
+specifically. Fixed with `serverExternalPackages: ['pdf-parse']` in `next.config.ts` — the standard
+fix for a native/worker-dependent package in a Next.js server route: it makes the route `require()`
+the package directly from `node_modules` at runtime instead of bundling it, so the relative worker
+path resolves correctly. Verified after the fix with a real Playwright-generated PDF uploaded
+through the actual UI, not just a unit test.
+
+**Bug #2, caught live: "Use document value" could silently fail to actually fix a mismatch.** The
+first version of `applyDocumentValue()`'s aggregate-field path (gate lanes, parking spaces) scaled
+each underlying row independently (`Math.round(row * ratio)`), which for small integers — 3 gates
+with 6/4/3 lanes, document says 14 — rounds every row back down to its original value (6, 4, 3 =
+13, not 14), so accepting the document's figure left the venue screen at 13, still a mismatch,
+while the UI had just told the owner it was fixed. Fixed with `allocateExact()`, a largest-remainder
+allocation that floors each proportional share and hands the leftover units to the rows with the
+biggest fractional remainder, guaranteeing the new total is EXACTLY the document's figure. Pinned
+with regression tests in `lib/owner/__tests__/store.test.ts` (including the exact 6/4/3→14 case that
+failed live) — re-verified live afterward: the row correctly reads "You entered 14, document says
+14 · MATCHES".
+
+**Trust upgrade is per-field, not blanket.** `applyDocumentValue()` only sets `document-checked` on
+the specific field(s) actually accepted — it doesn't touch `forecourtAreaM2`, individual gate
+`side`s, or anything the document wasn't checked against. A pre-existing comment in
+`lib/owner/store.ts` (`trustToStatus()`) anticipated exactly this feature ("document-checked earns
+'real' too once it's actually matched against a safety document") — left unchanged here, because
+`TrustPill` still lets an owner manually click a field to "document-checked" with zero real check
+(`components/owner/TrustPill.tsx`: "there's no backend to verify against yet"), and `trustToStatus`
+has no way to tell a manual click from a real Slice-4 match. Resolving that would need per-field
+provenance tracking, which is out of scope here — flagged rather than silently left inconsistent.
+
+---

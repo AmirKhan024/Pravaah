@@ -6,7 +6,7 @@
  * Scenario bundle lib/console.ts already persists) so re-opening /owner/venue shows what was typed,
  * not just what it produced.
  */
-import { loadScenarioFromRows, simulate, type ArrivalRow, type CsvScenarioInput, type DataField, type ParkingRow, type Scenario } from '@/engine';
+import { loadScenarioFromRows, simulate, type ArrivalRow, type CsvScenarioInput, type DataField, type DocCheckField, type ParkingRow, type Scenario } from '@/engine';
 import { loadScenario, store } from '@/lib/console';
 import { cleanGroupsToArrivalRows } from '@/lib/registrations/apply';
 import type { CleanGroup, GateInfo } from '@/lib/registrations/types';
@@ -21,6 +21,7 @@ export function loadOwnerVenue(): OwnerVenue {
     if (!raw) return sampleOwnerVenue();
     const v = JSON.parse(raw) as OwnerVenue;
     if (!v?.gates?.length) return sampleOwnerVenue();
+    if (!v.exits) v.exits = trusted(8); // back-compat: a draft saved before the exits field existed
     return v;
   } catch {
     return sampleOwnerVenue();
@@ -180,6 +181,60 @@ export function saveOwnerVenue(v: OwnerVenue, arrivals?: ArrivalRow[]): OwnerSav
 export function newGate(v: OwnerVenue): OwnerGate {
   const n = v.gates.length + 1;
   return { id: nextId('G'), name: `Gate ${n}`, side: 'north', lanes: trusted(4), forecourtAreaM2: trusted(1000) };
+}
+
+/* ---------------- Slice 4: safety-document check ---------------- */
+
+export const totalGateLanes = (v: OwnerVenue): number => v.gates.reduce((s, g) => s + g.lanes.value, 0);
+export const totalParkingSpaces = (v: OwnerVenue): number => v.parking.reduce((s, p) => s + p.capacityVehicles.value, 0);
+
+/** The 4 owner-screen fields a safety document is checked against — capacity and exits are single
+ *  fields; gate lanes and parking spaces are the venue's own totals across however many gates/lots
+ *  it has, since a document states one figure for "screening lanes," not one per gate. */
+export function docCheckOwnerValues(v: OwnerVenue): Record<DocCheckField, number> {
+  return { capacity: v.capacity.value, gateLanes: totalGateLanes(v), exits: v.exits.value, parkingSpaces: totalParkingSpaces(v) };
+}
+
+/** Scales `current` proportionally to sum to exactly `target` (the largest-remainder method: floor
+ *  each proportional share, then hand the leftover units to the rows with the biggest fractional
+ *  remainder) — never an even split that independently-rounds away from the target. A first
+ *  version rounded each row independently (`Math.round(v * ratio)`), which for small integers like
+ *  gate lane counts routinely landed 1 short of the document's own total — "accept" would claim to
+ *  match the document while the venue screen quietly stayed a mismatch. Caught live (see
+ *  docs/DECISIONS.md) and fixed with this exact-allocation helper. */
+function allocateExact(current: number[], target: number): number[] {
+  const n = current.length || 1;
+  const total = current.reduce((a, b) => a + b, 0);
+  const raw = total > 0 ? current.map((v) => (v / total) * target) : current.map(() => target / n);
+  const floors = raw.map((r) => Math.max(0, Math.floor(r)));
+  const order = raw.map((r, i) => ({ i, frac: r - Math.floor(r) })).sort((a, b) => b.frac - a.frac);
+  const out = [...floors];
+  let remaining = Math.round(target) - floors.reduce((a, b) => a + b, 0);
+  for (let k = 0; k < order.length && remaining > 0; k++, remaining--) out[order[k].i]++;
+  while (remaining < 0) {
+    const idx = out.reduce((best, val, i) => (val > out[best] ? i : best), 0);
+    if (out[idx] <= 0) break;
+    out[idx]--;
+    remaining++;
+  }
+  return out;
+}
+
+/** Accepting a document value for capacity/exits sets that single field. For the two aggregate
+ *  fields (gate lanes, parking spaces), it redistributes every underlying row so the new total is
+ *  EXACTLY the document's figure (allocateExact), preserving the owner's own relative split across
+ *  gates/lots rather than guessing which single row was wrong. Every touched field's trust becomes
+ *  'document-checked' — never 'verified' (nobody has confirmed it on site; see lib/owner/types.ts's
+ *  OwnerTrust ladder) and never silently 'claimed' again. */
+export function applyDocumentValue(v: OwnerVenue, field: DocCheckField, documentValue: number): OwnerVenue {
+  if (field === 'capacity') return { ...v, capacity: trusted(documentValue, 'document-checked') };
+  if (field === 'exits') return { ...v, exits: trusted(documentValue, 'document-checked') };
+  if (field === 'gateLanes') {
+    const shares = allocateExact(v.gates.map((g) => g.lanes.value), documentValue);
+    return { ...v, gates: v.gates.map((g, i) => ({ ...g, lanes: trusted(shares[i], 'document-checked') })) };
+  }
+  const shares = allocateExact(v.parking.map((p) => p.capacityVehicles.value), documentValue);
+  return { ...v, parking: v.parking.map((p, i) => ({ ...p, capacityVehicles: trusted(shares[i], 'document-checked') })) };
 }
 
 /** the venue's current gates, as lib/registrations needs them (matching, and proportional

@@ -31,6 +31,17 @@ export function VenueBasics({ v, onChange }: { v: OwnerVenue; onChange: (v: Owne
           />
         </label>
         <label className={label}>
+          <span className="flex items-center justify-between">
+            Number of exits <TrustPill trust={v.exits.trust} onChange={(trust) => onChange({ ...v, exits: trusted(v.exits.value, trust) })} />
+          </span>
+          <input
+            className={input}
+            inputMode="numeric"
+            value={v.exits.value}
+            onChange={(e) => onChange({ ...v, exits: trusted(Math.max(0, Math.round(Number(e.target.value) || 0)), v.exits.trust) })}
+          />
+        </label>
+        <label className={label}>
           Date
           <input type="date" className={input} value={v.date} onChange={(e) => onChange({ ...v, date: e.target.value })} />
         </label>

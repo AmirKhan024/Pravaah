@@ -1060,3 +1060,66 @@ exist in `lib/telegram.ts` for it to build on.
   wasn't separately confirmed.
 
 ---
+
+## 2026-09-27 — Safety-document check (Slice 4 of 4): the last of the four slices
+
+**Built**
+- `engine/docCheck.ts` (new, pure): `verifyClaimedFigures()` (Step C — a claim survives only if its
+  snippet is verbatim in the document text AND the claimed number's digits appear in that snippet),
+  `compareToOwnerValues()` (Step D — match/mismatch/not-found against the owner's 4 checkable
+  values), and `fuzzyExtractClaims()` (a regex-based offline fallback for DEMO_OFFLINE or a Groq
+  failure).
+- `app/api/documents/extract/route.ts` (new, Step A): deterministic text extraction — `.txt` is
+  decoded as-is, `.pdf` is parsed with the new `pdf-parse` dependency (added because it turned out
+  to be trivial, per the brief's own "PDF if a parser dependency exists or is trivial, else TXT").
+- `app/api/llm/document/route.ts` (new, Step B): Groq proposes claimed figures + exact quotes for
+  the 4 fields; code validates the JSON shape only — the real verbatim-in-text check is Step C,
+  done downstream, never trusted from the route alone.
+- `lib/owner/types.ts`: added `OwnerVenue.exits` (a paperwork-only field — see DECISIONS.md for why
+  it never feeds the simulation, unlike the other 3 checkable fields).
+  `lib/owner/store.ts`: `docCheckOwnerValues()`, `totalGateLanes()`/`totalParkingSpaces()`,
+  `applyDocumentValue()` (accepting a document figure for capacity/exits sets that field directly;
+  for the two aggregate fields it redistributes every gate/lot via a new exact-allocation helper —
+  see DECISIONS.md for the bug this fixed).
+- `components/owner/DocumentsScreen.tsx` + `app/owner/documents/` (new): upload (.txt/.pdf) or
+  paste, a "Use the sample document" button (the bundled, clearly-labelled sample at
+  `data/sample/safety-doc.txt`), and one row per field — match/mismatch/not-found, a one-tap
+  "View snippet" link, and (for a mismatch) "Use document value"/"Keep mine." The screen states its
+  own limit verbatim: "Pravaah checks that your numbers match your papers. It does not certify
+  safety."
+- `next.config.ts`: `serverExternalPackages: ['pdf-parse']` — required for real PDF uploads to work
+  under Next.js's bundler (see DECISIONS.md).
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 173/173 (the one pre-existing, unrelated flaky perf test
+  in `engine/__tests__/venues.test.ts` aside). New tests: `engine/__tests__/docCheck.test.ts` (8,
+  against the real bundled sample document) and 4 new cases in `lib/owner/__tests__/store.test.ts`
+  for `applyDocumentValue`, including the exact-allocation regression.
+- **Live-verified twice** (Playwright against `npm run dev`): (1) the bundled sample document,
+  loaded with one click, correctly showed capacity as a match, gate lanes and parking as mismatches,
+  and exits as "claimed — not found in document" (the sample deliberately never mentions exits) —
+  all via a real Groq round-trip ("Groq-assisted" shown on screen, not the offline fallback); (2) a
+  real PDF, generated fresh via Playwright and uploaded through the actual file input, extracted
+  and checked correctly end-to-end after fixing the pdf-parse/Turbopack bug below.
+- **Two real bugs found live, not by code review** — both documented in detail in DECISIONS.md:
+  (1) every real PDF upload failed until `pdf-parse` was marked as a server-external package; (2)
+  "Use document value" for an aggregate field (gate lanes/parking) could silently leave the venue
+  screen still mismatched, due to independent per-row rounding — fixed with an exact-allocation
+  helper and re-verified live afterward.
+
+**Overruled from the brief's literal wording**
+- Treated "gate lanes or widths, number of exits, parking spaces" as 3 more flat venue-level totals
+  (not a per-gate breakdown) alongside capacity — see DECISIONS.md for why.
+
+**Still open / deferred**
+- The pre-existing tension between the manual `TrustPill` (any field can be clicked to
+  "document-checked" with no real check) and this slice's own, actually-verified
+  "document-checked" isn't resolved — both currently look identical in the UI. Flagged in
+  DECISIONS.md rather than silently left inconsistent; fixing it would need per-field provenance
+  tracking (was this specific value ever run through Step C?), which is more state than this slice's
+  scope justified.
+- Didn't test a genuinely scanned (image-only, no text layer) PDF — `pdf-parse` is expected to
+  return an empty/near-empty string for one, and the route already handles that case with a plain
+  "could not find any text" message, but this wasn't exercised with a real scanned file.
+
+---

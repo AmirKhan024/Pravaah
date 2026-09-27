@@ -22,3 +22,4 @@ export * from './csv';
 export * from './dataLoader';
 export * from './playbook';
 export * from './actuals';
+export * from './docCheck';

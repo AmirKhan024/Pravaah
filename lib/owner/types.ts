@@ -46,6 +46,12 @@ export interface OwnerVenue {
   name: string;
   city: string;
   capacity: Trusted<number>;
+  /** Slice 4 (safety-document check): the 4th checkable field, alongside capacity, total gate
+   *  lanes and total parking spaces. Never feeds the simulation (the engine has no exits/egress
+   *  model yet — SOURCE_OF_TRUTH's own documented gap) — this is a paperwork/compliance number
+   *  only, exactly matching the brief's "Pravaah checks that your numbers match your papers. It
+   *  does not certify safety." */
+  exits: Trusted<number>;
   date: string; // YYYY-MM-DD
   gatesOpen: string; // HH:MM
   showStart: string; // HH:MM
@@ -65,6 +71,7 @@ export function sampleOwnerVenue(): OwnerVenue {
     name: 'Riverside Grounds',
     city: 'Navi Mumbai',
     capacity: trusted(20000, 'claimed'),
+    exits: trusted(8, 'claimed'),
     date: '2026-01-17',
     gatesOpen: '16:00',
     showStart: '19:00',

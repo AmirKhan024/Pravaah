@@ -25,9 +25,13 @@ import {
   type VenueSpec,
 } from '@/engine';
 import { loadScenario, type ScenarioBundle } from '@/lib/console';
+import { defaultMatchDateISO, todayISO } from '@/lib/timeline';
 import { Button, Card, Kicker, Logo, cx } from '@/components/ui';
 
 const CACHED = VENUES.filter((v) => v.spec); // the flagship (spec: null) isn't a Quick Start starting point
+/** brief: "Default match date = 60 days from today, never in the past." Computed once per page
+ *  load, not hardcoded, so this can never go stale the way the old fixed placeholder did. */
+const DEFAULT_MATCH_DATE = defaultMatchDateISO(todayISO());
 
 function toMin(hhmm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
@@ -36,11 +40,10 @@ function toMin(hhmm: string): number | null {
 }
 
 const TEMPLATES: Record<string, string> = {
-  'event.csv': 'name,date,gates_open,match_start,capacity,expected_turnout_pct,venue_lat,venue_lng,status,source_note\nYour match name,2026-01-01,16:00,19:30,30000,90,19.0000,73.0000,estimated,replace with your own data\n',
+  'event.csv': `name,date,gates_open,match_start,capacity,expected_turnout_pct,venue_lat,venue_lng,status,source_note\nYour match name,${DEFAULT_MATCH_DATE},16:00,19:30,30000,90,19.0000,73.0000,estimated,replace with your own data\n`,
   'gates.csv':
     'gate_id,name,side,lanes,forecourt_area_m2,stands_served,vip_gate,accessible_lane,status,source_note\nG1,Gate 1,north,8,2000,North Stand,false,true,estimated,replace with your own data\n',
-  'tickets.csv':
-    'snapshot_label,snapshot_date,stand,gate_id,category,tickets_sold,days_before_match,alt_gates,status,source_note\nT-1,2025-12-31,North Stand,G1,General,9000,1,,estimated,replace with your own data\n',
+  'tickets.csv': `snapshot_label,snapshot_date,stand,gate_id,category,tickets_sold,days_before_match,alt_gates,status,source_note\nT-1,${DEFAULT_MATCH_DATE},North Stand,G1,General,9000,1,,estimated,replace with your own data\n`,
   'arrivals.csv':
     'group,size,share_pct,mode,origin,preferred_gate,ticket_gate,mean_arrival_time,spread_min,pulse_period_min,status,source_note\nMain rail arrivals,9000,30,rail,Your station,G1,G1,18:30,30,6,estimated,replace with your own data\n',
   'hotels.csv':
@@ -98,7 +101,7 @@ export default function Setup() {
   const [venueChoice, setVenueChoice] = useState<string>(CACHED[0]?.id ?? '');
   const [otherName, setOtherName] = useState('');
   const [capacity, setCapacity] = useState('30000');
-  const [date, setDate] = useState('2026-01-01');
+  const [date, setDate] = useState(DEFAULT_MATCH_DATE);
   const [gatesOpen, setGatesOpen] = useState('16:00');
   const [kickoff, setKickoff] = useState('19:30');
   const [turnout, setTurnout] = useState('90');
@@ -145,6 +148,7 @@ export default function Setup() {
       go({
         scenario,
         source: 'custom',
+        matchDateISO: date,
         fields: [
           { file: 'quick start', row: 'venue', tag: cached ? 'real' : 'estimated', sourceNote: cached ? 'cached venue graph' : 'OpenStreetMap-derived graph' },
           { file: 'quick start', row: 'capacity', tag: 'real' },
@@ -177,7 +181,15 @@ export default function Setup() {
       };
       const res = loadScenarioFromRows(input, { venueLabel: 'DY Patil Stadium (sample fixture)' });
       if (!res.ok) return setErrors(res.errors);
-      go({ scenario: res.data.scenario, source: 'sample', fields: res.data.fields, confidence: res.data.confidence, resources: res.data.resources });
+      go({
+        scenario: res.data.scenario,
+        source: 'sample',
+        fields: res.data.fields,
+        confidence: res.data.confidence,
+        resources: res.data.resources,
+        rawInput: input,
+        matchDateISO: input.event[0]?.date || undefined,
+      });
     } catch {
       setErrors(['Could not load the sample data.']);
     } finally {
@@ -196,7 +208,15 @@ export default function Setup() {
       if (csvErrors.length) return setErrors(csvErrors);
       const res = loadScenarioFromRows(input);
       if (!res.ok) return setErrors(res.errors);
-      go({ scenario: res.data.scenario, source: 'custom', fields: res.data.fields, confidence: res.data.confidence, resources: res.data.resources });
+      go({
+        scenario: res.data.scenario,
+        source: 'custom',
+        fields: res.data.fields,
+        confidence: res.data.confidence,
+        resources: res.data.resources,
+        rawInput: input,
+        matchDateISO: input.event[0]?.date || undefined,
+      });
     } catch {
       setErrors(['Could not read those files — make sure they are plain CSV.']);
     } finally {

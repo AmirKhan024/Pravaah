@@ -17,6 +17,7 @@ import Toast from '@/components/console/Toast';
 import RoomPanel from '@/components/room/RoomPanel';
 import { Logo } from '@/components/ui';
 import StatusBand from './StatusBand';
+import TimelineBand from './TimelineBand';
 import ActionsDue from './ActionsDue';
 import StatusDots from './StatusDots';
 import Ticker from './Ticker';
@@ -55,7 +56,7 @@ export default function Live() {
   const data = useSlice(store, (s) => ({ source: s.dataSource, conf: s.dataConfidence }));
 
   return (
-    <div className="grid h-dvh grid-rows-[48px_auto_minmax(0,1fr)_auto] overflow-hidden bg-ink">
+    <div className="grid h-dvh grid-rows-[48px_auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-ink">
       <header className="no-print flex items-center gap-4 border-b border-line bg-ink px-5">
         <Link href="/" className="flex items-center gap-2.5 text-brass" aria-label="Pravaah home">
           <Logo className="size-6" />
@@ -80,6 +81,7 @@ export default function Live() {
         </div>
       </header>
 
+      <TimelineBand />
       <StatusBand />
 
       <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_340px]">

@@ -172,7 +172,7 @@ export function saveOwnerVenue(v: OwnerVenue, arrivals?: ArrivalRow[]): OwnerSav
   const res = loadScenarioFromRows(input, { venueLabel: v.name });
   if (!res.ok) return { ok: false, errors: res.errors };
   saveOwnerVenueDraft(v);
-  loadScenario({ scenario: res.data.scenario, source: 'custom', fields: res.data.fields, confidence: res.data.confidence, resources: res.data.resources });
+  loadScenario({ scenario: res.data.scenario, source: 'custom', fields: res.data.fields, confidence: res.data.confidence, resources: res.data.resources, matchDateISO: v.date });
   const after = readout(res.data.scenario);
   return { ok: true, before, after, fields: res.data.fields };
 }

@@ -342,3 +342,56 @@ This is also why the function lives in `engine/arrivals.ts` next to `arrivalCurv
 built directly on top of, rather than in a new top-level file.
 
 ---
+
+## 2026-09-27 — Timeline (Slice 1): preflight audit + a real infinite-render bug caught by the build itself
+
+**Preflight, before any new code:**
+- **`/visit`'s redirect gate already only ever offers Gate 2 or Gate 1 for West-stand fans, never
+  Gate 5.** Read `data/sample/dy-patil/tickets.csv`'s `alt_gates` column (`G2;G1` for both West
+  Lower and West Upper) and traced it through `engine/dataLoader.ts` (`gb.altIds[0]` — first entry
+  wins) into `lib/room.ts`'s `visitOrigins()` and `lib/visit.ts`'s `buildVisitCard()`. No fix
+  needed; this was already correct going in.
+- **The Calm/danger consistency rule (`lib/console.ts`'s `opsStatus()`) already holds.** Traced
+  every path that can resolve to `'calm'`: no board yet (genuinely nothing to do), every board
+  option `useless` (the recommended plan's own levers don't help against any of the 12 stress
+  nights — a distinct, already-tested state, see `lib/__tests__/opsStatus.test.ts`), or a plan is
+  **approved** — and that last case's sentence already says "In force since HH:MM," which is
+  exactly the brief's "and then say so in the sentence" carve-out. Any lever's deadline closing
+  unhandled routes through `expireLevers()` into a `replan`, which `opsStatus()` checks *before*
+  falling through to calm. No fix needed.
+- **Default match date.** Was genuinely broken: `components/setup/Setup.tsx`'s Quick Start date
+  field defaulted to a hardcoded `'2026-01-01'`, in the past as of today (2026-09-27), and the
+  downloadable `event.csv`/`tickets.csv` templates had the same stale placeholder. Fixed: both now
+  read `defaultMatchDateISO(todayISO())` (`lib/timeline.ts`), i.e. always exactly 60 days out,
+  computed at page-load, never hardcoded.
+
+**A real bug this slice's own build caught (not a preflight item — found live-testing the new UI):**
+`components/live/TimelineBand.tsx` initially put `timelineDueActions(st)` *inside* a `useSlice`
+selector, the same way `DecisionClock.tsx` puts `crushIfStartedAt(...)` inside its own selector.
+That pattern is only safe when the computed value is a primitive (a number, compared by value);
+`timelineDueActions()` returns an array of freshly-allocated objects on every call, so two
+back-to-back calls with an *unchanged* store still produce different references. `lib/createStore.ts`'s
+`useSlice` caches its `getSnapshot` result via a shallow-equal check specifically to satisfy
+`useSyncExternalStore`'s contract that `getSnapshot` must return a stable value when nothing
+changed; violating it doesn't just cause extra re-renders, it throws "Maximum update depth
+exceeded" in the browser. Live-verified with Playwright against `npm run dev` (console: "The
+result of getSnapshot should be cached to avoid an infinite loop"). Fixed by moving the
+`useSlice` selector to only the raw, stably-referenced state (`playbook`, `timelineDecisions`,
+`scn`, `base`, …) and computing `timelineDueActions()` as a plain call in the component's own
+render body instead — recomputing on every render of *this* component is fine; recomputing inside
+`getSnapshot` is not.
+
+**Scope call: which playbook rows get a real simulated benefit.** The brief's own 4 worked
+examples (block hotel rooms/30d, confirm coaches/14d, brief gate staff/3d, publish visitor
+guide/7d) don't all map cleanly onto an engine `Intervention` — "confirm coaches" would need a
+specific link id, and no single choice (which hotel cluster? which road?) generalises across an
+arbitrary uploaded dataset. Rather than fake a target, `data/playbooks.csv`'s `lever_type` column
+is left blank for that row (and for the two pure-ops rows) — they show up in "Do by" as an honest,
+un-simulated playbook reminder, never claiming a benefit number they can't back with a real
+`simulate()` diff. Two rows *do* get one: `house` (moves late-bookers into hotels — scenario-wide,
+needs no target id) and a 5th row I added beyond the brief's 4, "add extra screening lanes at the
+busiest gate" (`lanes` — the target gate is picked live, as whichever gate has the longest peak
+wait in the currently-loaded snapshot, never a hardcoded gate id, so it stays honest across any
+dataset).
+
+---

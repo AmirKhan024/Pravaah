@@ -6,7 +6,11 @@
 import {
   clockFor,
   comma,
+  dueActions,
   dyPatil,
+  loadScenarioFromRows,
+  parseCsv,
+  parsePlaybook,
   personPath,
   probeWaits,
   PROFILE_NAMES,
@@ -19,10 +23,13 @@ import {
   type AblationRow,
   type BoardOption,
   type Confidence,
+  type CsvScenarioInput,
   type DataField,
+  type DoByAction,
   type EnsembleResult,
   type Intervention,
   type Lever,
+  type PlaybookAction,
   type ProfileName,
   type RedTeamResult,
   type RejectedRow,
@@ -40,6 +47,7 @@ import { engine, proxy } from './engineClient';
 import { appendLedger, loadLedger, type LedgerEntry, type LedgerType } from './ledger';
 import { bucketStatuses, type BucketId, type BucketInfo } from './buckets';
 import { buildObservedScenario, firedTripwires, isObservedEmpty, mergeObserved, type ActionState } from './monitor';
+import { buildTimelineData, defaultMatchDateISO, stepForDate, todayISO, type TimelineData } from './timeline';
 import {
   actionExpiringAlert,
   actionStoppedWorkingAlert,
@@ -149,6 +157,26 @@ export interface ConsoleState {
   dataFields: DataField[];
   dataConfidence: Confidence | null;
   resources: ResourceRow[];
+
+  /* ---- Timeline (Slice 1: "N days to match" + T-90..Match night stepper) ---- */
+  /** the raw tickets/arrivals/etc. rows this scenario was built from, kept so the stepper can
+   *  rebuild any other snapshot later without re-uploading anything; null for the flagship demo
+   *  and for a Quick Start scenario (no tickets.csv snapshots to step through) */
+  rawInput: CsvScenarioInput | null;
+  /** event.csv's own match date if known, else the brief's own default (60 days out, never past) */
+  matchDateISO: string;
+  /** the T-90..Match night step list + each step's do-nothing dangerous-minute count, computed
+   *  once per dataset load (each step is its own simulate() run) — null when rawInput has no
+   *  distinct snapshots to step through */
+  timeline: TimelineData | null;
+  /** which step's numbers `scn`/`base`/`cur` currently reflect */
+  activeSnapshot: string | null;
+  /** null = the real clock decides "today"; set = a demo date the user picked, shown labelled as such */
+  demoDateISO: string | null;
+  /** data/playbooks.csv, loaded once in boot() */
+  playbook: PlaybookAction[];
+  /** playbook action id -> the organiser's decision, logged to the Black Box the moment it's made */
+  timelineDecisions: Record<string, 'approved' | 'skipped'>;
 }
 
 /** loaded once via loadScenario(); everything a data-driven scenario carries beyond the Scenario itself */
@@ -158,6 +186,13 @@ export interface ScenarioBundle {
   fields?: DataField[];
   confidence?: Confidence | null;
   resources?: ResourceRow[];
+  /** Slice 1 (Timeline): the raw rows this scenario came from, its match date, its precomputed
+   *  step chart, and which step is currently active — all optional so every pre-Timeline caller
+   *  (Quick Start, the owner registration flow) keeps working unchanged. */
+  rawInput?: CsvScenarioInput;
+  matchDateISO?: string;
+  timeline?: TimelineData | null;
+  activeSnapshot?: string | null;
 }
 
 const SCENARIO_KEY = 'pravaah:scenario:v1';
@@ -253,6 +288,14 @@ function initial(scn: Scenario = BASE_SCN, bundle: ScenarioBundle | null = STORE
     dataFields: bundle?.fields ?? [],
     dataConfidence: bundle?.confidence ?? null,
     resources: bundle?.resources ?? [],
+
+    rawInput: bundle?.rawInput ?? null,
+    matchDateISO: bundle?.matchDateISO ?? defaultMatchDateISO(todayISO()),
+    timeline: bundle?.timeline ?? null,
+    activeSnapshot: bundle?.timeline ? bundle.activeSnapshot ?? 'Match night' : null,
+    demoDateISO: null,
+    playbook: [],
+    timelineDecisions: {},
   };
 }
 
@@ -267,9 +310,12 @@ export const clock = (t: number) => clockFor(get().scn, t);
  *  "an event head's own data" replace the flagship prototype everywhere at once. Persists to
  *  localStorage (never sent to a server) so the choice survives a reload. */
 export function loadScenario(bundle: ScenarioBundle) {
-  writeStoredBundle(bundle);
+  const matchDateISO = bundle.matchDateISO ?? defaultMatchDateISO(todayISO());
+  const timeline = bundle.timeline !== undefined ? bundle.timeline : bundle.rawInput ? buildTimelineData(bundle.rawInput, matchDateISO, bundle.scenario.venueLabel) : null;
+  const full: ScenarioBundle = { ...bundle, matchDateISO, timeline };
+  writeStoredBundle(full);
   booted = false;
-  set(initial(bundle.scenario, bundle));
+  set(initial(full.scenario, full));
   boot();
 }
 
@@ -279,6 +325,91 @@ export function resetToFlagship() {
   booted = false;
   set(initial(dyPatil, null));
   boot();
+}
+
+/* ---------------- Timeline (Slice 1) ---------------- */
+
+/** Jumps to a T-90..Match night step: rebuilds cohort sizes at that snapshot (engine/dataLoader.ts's
+ *  own opts.snapshot), re-runs the evening, and re-runs the whole board/optimiser/red-team pipeline
+ *  against the new sizes (via boot()) — a different snapshot really is a differently-sized evening,
+ *  not a cosmetic label change. `displayDateISO` lets a free-typed demo date keep its own exact
+ *  value on screen even though the underlying data snaps to the nearest snapshot we actually have. */
+export function setTimelineStep(label: string, displayDateISO?: string) {
+  const s = get();
+  if (!s.rawInput || !s.timeline) return;
+  const step = s.timeline.steps.find((x) => x.label === label);
+  if (!step) return;
+  const res = loadScenarioFromRows(s.rawInput, { snapshot: label === 'Match night' ? undefined : label, venueLabel: s.timeline.venueLabel });
+  if (!res.ok) return;
+  const bundle: ScenarioBundle = {
+    scenario: res.data.scenario,
+    source: (s.dataSource === 'flagship' ? 'sample' : s.dataSource) as 'sample' | 'custom',
+    fields: res.data.fields,
+    confidence: res.data.confidence,
+    resources: res.data.resources,
+    rawInput: s.rawInput,
+    matchDateISO: s.matchDateISO,
+    timeline: s.timeline,
+    activeSnapshot: label,
+  };
+  writeStoredBundle(bundle);
+  booted = false;
+  const shown = displayDateISO ?? step.dateISO;
+  set({ ...initial(res.data.scenario, bundle), demoDateISO: shown === todayISO() ? null : shown });
+  boot();
+  rehearse();
+  requestAnimationFrame(() => skipStory());
+}
+
+/** The free-form "demo date" control: snaps to whichever step's data is the most recent one at or
+ *  before the chosen date (real ticket snapshots are discrete; the displayed date can still be
+ *  exact), and re-runs the evening only if that actually changes which step is loaded. */
+export function setDemoDate(iso: string) {
+  const s = get();
+  if (!s.timeline) {
+    set({ demoDateISO: iso === todayISO() ? null : iso });
+    return;
+  }
+  const step = stepForDate(s.timeline, iso);
+  if (step.label === s.activeSnapshot) set({ demoDateISO: iso === todayISO() ? null : iso });
+  else setTimelineStep(step.label, iso);
+}
+
+/** Back to the real clock — re-picks whichever step the real date actually falls into. */
+export function resetDemoDate() {
+  const s = get();
+  if (s.timeline) {
+    const step = stepForDate(s.timeline, todayISO());
+    if (step.label !== s.activeSnapshot) {
+      setTimelineStep(step.label);
+      return;
+    }
+  }
+  set({ demoDateISO: null });
+}
+
+/** The next 1-3 playbook actions due, nearest-first, each with a real simulated benefit when the
+ *  row has a leverType — read by the Timeline row's "Do by" list. Already-decided actions (Approve/
+ *  Not now) drop off the list; they stay in the Black Box, not on screen twice. */
+export function timelineDueActions(s: ConsoleState = get()): DoByAction[] {
+  if (!s.playbook.length) return [];
+  const today = s.demoDateISO ?? todayISO();
+  return dueActions(s.playbook, s.matchDateISO, today, s.scn, s.base, s.scn.gatesOpenTick)
+    .filter((a) => !s.timelineDecisions[a.id])
+    .slice(0, 3);
+}
+
+export function approveTimelineAction(a: DoByAction) {
+  set((s) => ({ timelineDecisions: { ...s.timelineDecisions, [a.id]: 'approved' } }));
+  log(
+    'decision_recorded',
+    `Approved "${a.action}" (do by ${a.doByISO}, ${a.owner}).${a.benefitMin != null ? ` Removes ~${a.benefitMin} dangerous minute${a.benefitMin === 1 ? '' : 's'} once done.` : ''}`,
+    { id: a.id, action: a.action, owner: a.owner, doByISO: a.doByISO, benefitMin: a.benefitMin, decision: 'approved' },
+  );
+}
+export function skipTimelineAction(a: DoByAction) {
+  set((s) => ({ timelineDecisions: { ...s.timelineDecisions, [a.id]: 'skipped' } }));
+  log('decision_recorded', `Not now: "${a.action}" (was due ${a.doByISO}, ${a.owner}).`, { id: a.id, action: a.action, owner: a.owner, doByISO: a.doByISO, decision: 'skipped' });
 }
 export const viewTick = (s: ConsoleState = get()) => Math.floor(s.peek ?? s.tick);
 
@@ -300,12 +431,25 @@ export function toast(t: string) {
 }
 export const caption = (t: string) => set({ caption: t });
 
+/** data/playbooks.csv, fetched once — same-origin, server reads a local file, so this works under
+ *  DEMO_OFFLINE too (unlike Groq/Supabase/Telegram, nothing here leaves the machine running Pravaah). */
+async function loadPlaybook(): Promise<PlaybookAction[]> {
+  try {
+    const r = await fetch('/api/playbooks');
+    const j = (await r.json()) as { playbooks: string };
+    return parsePlaybook(parseCsv(j.playbooks) as never);
+  } catch {
+    return [];
+  }
+}
+
 /* ---------------- boot ---------------- */
 let booted = false;
 export function boot() {
   if (booted) return;
   booted = true;
   loadLedger().then((ledger) => set({ ledger }));
+  loadPlaybook().then((playbook) => set({ playbook }));
   const s = get();
   const watch = s.scn.zones.findIndex((z) => z.id === 'fc_west');
   engine()

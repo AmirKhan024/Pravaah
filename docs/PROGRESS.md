@@ -882,3 +882,67 @@ exist in `lib/telegram.ts` for it to build on.
 - Did not audit every number in the app beyond the four the prompt named — scope was "the two other known-inconsistent figures," not a full numeric audit. If more are found, they should get the same treatment (one computed source, a regression test, not just a copy edit).
 
 ---
+
+## 2026-09-27 — Timeline (Slice 1 of 4): "N days to match" + T-90..Match night stepper
+
+**Built**
+- `engine/playbook.ts` (new, pure): parses `data/playbooks.csv` (action/owner/lead_days/trigger,
+  an optional `lever_type`), calendar arithmetic (`daysBetween`/`addDays`/`defaultMatchDateISO`),
+  and `dueActions()` — the do-by list, nearest-due first, each with a real simulated `benefitMin`
+  when the row carries a `lever_type` (`house` or `lanes`; `lanes` always targets whichever gate
+  has the longest peak wait in the *currently loaded* snapshot, never a hardcoded gate id).
+- `data/playbooks.csv` (new): the brief's own 4 worked examples (block hotel rooms/30d, confirm
+  coaches/14d, brief gate staff/3d, publish visitor guide/7d) plus a 5th, "add extra screening
+  lanes at the busiest gate," added because `lanes` needs only a gate id and so can be honestly
+  simulated. Served via a new `/api/playbooks` route (same pattern as `/api/sample/dy-patil`).
+- `lib/timeline.ts` (new): derives the T-90..T-1 step list from `tickets.csv`'s own
+  `snapshot_label`/`days_before_match` columns (already loader-supported via
+  `engine/dataLoader.ts`'s `opts.snapshot` — this slice is UI + date-rebasing, not new engine
+  work, exactly as `docs/PROGRESS.md`'s own earlier "cut, if time is short" note anticipated),
+  appends a synthetic "Match night" step (the final snapshot's own numbers, days=0), and
+  pre-runs one do-nothing `simulate()` per step for the "when does it become a problem?" chart.
+  Snapshot dates are rebased **relative to the match date** (`matchDateISO - days_before_match`),
+  not read from tickets.csv's own absolute `snapshot_date` column, so changing the match date
+  moves every step's calendar date with it.
+- `lib/console.ts`: `ScenarioBundle`/`ConsoleState` gained `rawInput`, `matchDateISO`, `timeline`,
+  `activeSnapshot`, `demoDateISO`, `playbook`, `timelineDecisions`. New actions:
+  `setTimelineStep()` (rebuilds the scenario at a snapshot via `loadScenarioFromRows({snapshot})`,
+  then re-runs the *whole* board/optimiser/red-team pipeline via `boot()` — a different snapshot
+  really is a differently-sized evening), `setDemoDate()`/`resetDemoDate()` (a free-typed date
+  snaps to the nearest step it actually has data for, while still displaying the exact typed
+  date), `timelineDueActions()`, `approveTimelineAction()`/`skipTimelineAction()` (log to the
+  Black Box via the existing `'decision_recorded'` ledger type — no new ledger plumbing).
+- `components/live/TimelineBand.tsx` (new): the compact row atop `/live` — "N days to match" +
+  the stepper, always visible; the chart, its plain sentence, and the "do by" action cards sit
+  behind a "More" toggle (brief: "max 4 numbers visible at once, anything secondary behind More").
+  A demo date shows as a labelled pill ("demo date 2026-09-26") whenever it differs from the real
+  clock, per the brief.
+- `components/setup/Setup.tsx` / `lib/owner/store.ts`: the sample-data and CSV-upload paths now
+  hand `rawInput` + `matchDateISO` (from `event.csv`'s own `date` field) into the bundle; the
+  owner-venue save path passes the owner's own entered match date. Fixed the Quick Start form's
+  stale hardcoded default date (see DECISIONS.md).
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 143/143 (one pre-existing, unrelated flaky perf timing
+  test in `engine/__tests__/venues.test.ts` aside — same intermittent failure seen before this
+  slice, on an unrelated file). New tests: `engine/__tests__/playbook.test.ts` (8),
+  `lib/__tests__/timeline.test.ts` (7), all against the real sample dataset, not mocks.
+- Live-verified in the browser (Playwright against `npm run dev` on the sample dataset): `/setup`
+  → "Load the sample data" → `/live` shows "89 days to match" (today 2026-09-27, sample match
+  date 2026-12-25) with the T-90..Match night stepper; clicking **T-90** rebuilds the map with a
+  visibly smaller crowd ("3% inside" vs. Match night's "19% inside") and re-labels the date pill
+  "DEMO DATE 2026-09-26"; clicking **T-30** and expanding "More" shows the chart (T-90/T-60/T-30
+  flat, T-7/T-1/Match night red) with the sentence "The do-nothing evening becomes a problem
+  around T-7 (28 dangerous minutes)," and 3 "Do by" cards with real do-by dates, owners, and
+  (for the two simulated rows) a `removes ~N dangerous minutes` line. Screenshots taken; a real
+  infinite-render bug was found and fixed live during this same pass (see DECISIONS.md).
+
+**Still open / deferred**
+- The owner-registration flow (`lib/owner/store.ts`'s `saveOwnerVenue`) only ever builds a single
+  ticket snapshot, so an owner-configured venue shows "Match night" only, no T-90 stepper — correct
+  and honest (there's no real snapshot history for a freshly-typed-in venue), but worth revisiting
+  if the owner flow ever grows its own snapshot concept.
+- Playwright is a devDependency but there's no committed project skill for launching `npm run dev`
+  + driving it — recommend `/run-skill-generator` if this becomes a recurring need.
+
+---

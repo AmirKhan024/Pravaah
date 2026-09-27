@@ -40,7 +40,11 @@ export interface RoomCohortProfile {
 }
 
 export function deriveRoomCohortProfile(scn: Scenario, c: Cohort): RoomCohortProfile {
-  const gateId = gateOfPath(scn, c.alt) || gateOfPath(scn, c.path);
+  // the MAIN gate first: a freshly-joined phone has not been redirected by anything yet, so its
+  // "initial route" must be the gate it's actually on, never the alt/redirect gate that a plan
+  // might later send it to — this was backwards (alt-first) and showed every nudge-eligible
+  // cohort its own redirect target as if it were already in force (see docs/DECISIONS.md)
+  const gateId = gateOfPath(scn, c.path) || gateOfPath(scn, c.alt);
   return {
     originLabel: ORIGIN[c.id] || originFallback(c.label),
     transportMode: TRANSPORT[c.id] || transportFallback(c.id),

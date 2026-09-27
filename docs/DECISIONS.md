@@ -572,3 +572,47 @@ guard in both callbacks (`components/map/FlowMap.tsx`) — re-verified live afte
 navigating `/live` → `/report` with no console errors.
 
 ---
+
+## 2026-09-27 — Two real visitor-side bugs, found live and fixed
+
+**Bug 1 — `/join` showed every nudge-eligible cohort its OWN redirect gate as if already in
+force.** `lib/roomProfiles.ts`'s `deriveRoomCohortProfile()` computed `initialRoute` as
+`gateOfPath(scn, c.alt) || gateOfPath(scn, c.path)` — alt gate first, main gate only as a
+fallback. A freshly-joined phone has not been redirected by anything; "initial route" must always
+be the main gate. Confirmed by direct comparison: `/visit` (which gets this right —
+`lib/visit.ts` only switches to the alt gate once `plan.redirects` actually marks it) showed
+Nerul-station visitors Gate 3, while `/join` showed the same origin Gate 2/5, for every single
+nudge-eligible cohort in the flagship scenario. Fixed by swapping the fallback order. Pinned with a
+new test in `lib/__tests__/roomProfiles.test.ts` asserting `initialRoute` equals the main gate and
+explicitly is NOT the alt gate.
+
+**Bug 2 (the serious one) — a phone's id was a single global key across every room, ever.**
+`supabase/schema.sql`'s `participants` table has `id text primary key` — not scoped to
+`(room_id, id)`. `app/join/[roomId]/Phone.tsx`'s `getPid()` generates ONE id per browser and
+reuses it forever via a single `pravaah_pid` localStorage key. Consequence: the moment a phone
+joins a SECOND room ever (a very ordinary thing to happen — an organizer testing multiple rooms,
+a judge scanning more than one QR code, anyone reopening a link after a previous event),
+`join()`'s "already joined?" check (`.eq('id', pid)`, no room scoping) finds the OLD room's
+participant row and returns it as success, while `phoneView()`'s stricter,
+`.eq('id', pid).eq('room_id', room.id)`-scoped lookup correctly finds nothing for the NEW room and
+returns `{ok:false}` — forever, on every single retry, with the client showing nothing but
+"Joining room X…" and no error. This is deterministic and permanent, not a transient race — every
+poll hits the exact same mismatch. Root-caused by directly querying the live room the user was
+stuck on (`curl .../api/room/GATE-832?pid=...` → confirmed `ok:false`; a POST join with a brand
+new pid on the SAME room succeeded immediately, proving the room itself was fine and the failure
+was specific to that browser's stored pid).
+
+**Fix chosen: scope the pid to the room client-side (`pravaah_pid_<roomId>`), not a database
+migration.** The "correct" fix is a composite primary key (`room_id, id`) on both `participants`
+and `votes` (which has the identical flaw — `participant_id text primary key`, no room scoping
+either). That requires an `ALTER TABLE` against the live Supabase database, which is not something
+to do without the person who owns that database explicitly asking for a migration. Namespacing the
+localStorage key by `roomId` fixes the symptom completely on the client — each room now gets its
+own independent pid per browser, so there is no cross-room collision to hit — with zero schema risk
+and zero migration. Flagged here as a known, deliberate compromise: the underlying schema
+constraint is still there, so a from-scratch fix later should still add the composite key. Verified
+live: the exact repro (join Room A, then Room B, same browser/localStorage) now succeeds for both,
+confirmed via two distinct `pravaah_pid_<roomId>` keys in localStorage and a correct cohort card
+for Room B.
+
+---

@@ -124,12 +124,20 @@ const BLURB: Record<string, Record<Lang, string>> = {
   late_book: { en: 'who booked late, with no room nearby', hi: 'जिन्होंने देर से बुक किया, पास में कमरा नहीं', mr: 'उशिरा बुकिंग केलेल्या, जवळ खोली नसलेल्या' },
 };
 
-function getPid() {
+/** One pid PER ROOM, not one pid ever (see docs/DECISIONS.md): `participants.id` is a single global
+ *  primary key across every room in Supabase (supabase/schema.sql), not scoped to (room_id, id).
+ *  A single global `pravaah_pid` meant the second room a browser ever joined would silently break
+ *  forever — join() finds the OLD room's row under that pid and treats it as "already joined," but
+ *  phoneView()'s room_id-scoped lookup finds nothing for the NEW room, so every poll keeps
+ *  returning `ok:false` with no way out. Namespacing the key by roomId gives each room its own pid
+ *  per browser, sidestepping the collision without a database migration. */
+function getPid(roomId: string) {
+  const key = 'pravaah_pid_' + roomId;
   try {
-    let id = localStorage.getItem('pravaah_pid');
+    let id = localStorage.getItem(key);
     if (!id) {
       id = 'p-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-      localStorage.setItem('pravaah_pid', id);
+      localStorage.setItem(key, id);
     }
     return id;
   } catch {
@@ -158,14 +166,14 @@ export default function Phone({ roomId }: { roomId: string }) {
   }, [roomId]);
 
   useEffect(() => {
-    pid.current = getPid();
+    pid.current = getPid(roomId);
     try {
       const l = localStorage.getItem('pravaah_lang') as Lang | null;
       if (l) setLang(l);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [roomId]);
 
   const call = useCallback(
     async (body?: Record<string, unknown>) => {

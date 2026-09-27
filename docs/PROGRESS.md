@@ -1123,3 +1123,30 @@ exist in `lib/telegram.ts` for it to build on.
   "could not find any text" message, but this wasn't exercised with a real scanned file.
 
 ---
+
+## 2026-09-27 — Two real visitor-side bugs found and fixed (reported live by the user)
+
+Reported: `/join/[roomId]` stuck forever on "Joining room X…" in a real browser. Root-caused and
+fixed two bugs (full detail in DECISIONS.md):
+
+1. **`lib/roomProfiles.ts`**: `initialRoute` showed the redirect (alt) gate instead of the cohort's
+   real main gate, for every nudge-eligible cohort — confirmed by direct contradiction against
+   `/visit`, which got the same cohort right. One-line fix (fallback order swapped).
+2. **The actual blocker**: a phone's id (`pravaah_pid`) was a single global localStorage key, and
+   `participants.id` is a global primary key in Supabase (not scoped per room) — so any phone that
+   ever joins a second room breaks permanently, with no error shown, ever. Fixed client-side by
+   scoping the key to `pravaah_pid_<roomId>` (no database migration attempted — see DECISIONS.md
+   for why a composite-key migration is the "real" fix but out of scope here).
+
+**Verified**: `tsc --noEmit` clean; `npx vitest run` 174/174 (1 pre-existing unrelated flaky perf
+test aside); a new regression test in `lib/__tests__/roomProfiles.test.ts` pins the main-gate
+assertion; live-reproduced the exact "join Room A then Room B in the same browser" failure with
+Playwright, confirmed it fixed (Room B now joins correctly, two independent
+`pravaah_pid_<roomId>` keys in localStorage, correct main gate shown).
+
+**Still open**: the underlying schema flaw (`participants`/`votes` primary keys not scoped to
+`room_id`) is still there — the client-side fix works around it, but a real fix would need an
+`ALTER TABLE` migration against the live Supabase project, which should be a deliberate,
+explicitly-requested change, not something to do inline while fixing a stuck-loading screen.
+
+---

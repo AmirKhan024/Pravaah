@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { clockFor, dyPatil } from '../../engine';
 import { deriveRoomCohortProfile } from '../roomProfiles';
 import { seededGroupSize } from '../seededGroup';
+import { gateOfPath, zoneName } from '../messages';
 
 describe('seededGroupSize — deterministic per participant (§12)', () => {
   it('is the same for the same pid every time', () => {
@@ -33,6 +34,18 @@ describe('deriveRoomCohortProfile — real values off the real Scenario/Cohort, 
       expect(profile.transportMode).toBeTruthy();
       expect(profile.arrivalLabel).toBeTruthy();
       expect(profile.initialRoute).toBeTruthy();
+    }
+  });
+
+  it('initialRoute is the cohort\'s MAIN gate, never its alt/redirect gate — a freshly-joined phone has not been redirected by anything yet', () => {
+    // a real bug: this used to read the alt gate first, so every nudge-eligible cohort in The
+    // Room showed its own redirect target as if the plan were already in force (see docs/DECISIONS.md)
+    for (const c of dyPatil.cohorts.filter((c) => c.alt)) {
+      const profile = deriveRoomCohortProfile(dyPatil, c);
+      const mainGateName = zoneName(dyPatil, gateOfPath(dyPatil, c.path));
+      const altGateName = zoneName(dyPatil, gateOfPath(dyPatil, c.alt));
+      expect(profile.initialRoute).toBe(mainGateName);
+      expect(profile.initialRoute).not.toBe(altGateName);
     }
   });
 });

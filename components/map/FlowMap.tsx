@@ -148,8 +148,12 @@ export default function FlowMap({ getState, fitKey, zoomBoost = 0.05 }: { getSta
     let lastW = 0,
       lastH = 0;
     const ro = new ResizeObserver(() => {
-      const w = wrap.current!.clientWidth,
-        h = wrap.current!.clientHeight;
+      // a resize notification queued just before unmount can still fire after wrap.current (and
+      // the map itself) is gone — a real bug this build's own screenshot pass caught navigating
+      // away from /live to /report (no map on that page) via client-side routing
+      if (!wrap.current || !mapRef.current) return;
+      const w = wrap.current.clientWidth,
+        h = wrap.current.clientHeight;
       if (!w || !h || (Math.abs(w - lastW) < 40 && Math.abs(h - lastH) < 40)) return;
       lastW = w;
       lastH = h;
@@ -170,7 +174,8 @@ export default function FlowMap({ getState, fitKey, zoomBoost = 0.05 }: { getSta
     let anim = 0;
     const lb = new LabelBox();
     const resize = () => {
-      const r = wrap.current!.getBoundingClientRect();
+      if (!wrap.current) return; // see the sibling ResizeObserver's guard above — same race on unmount
+      const r = wrap.current.getBoundingClientRect();
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       W = r.width;
       H = r.height;

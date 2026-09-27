@@ -556,3 +556,19 @@ has no way to tell a manual click from a real Slice-4 match. Resolving that woul
 provenance tracking, which is out of scope here — flagged rather than silently left inconsistent.
 
 ---
+
+## 2026-09-27 — A pre-existing FlowMap bug, caught while producing judge-facing screenshots
+
+Building a screenshot walkthrough of the four slices (client-side navigating `/live` → `/report` via
+the new "After-event report" link) surfaced a real, pre-existing bug: `components/map/FlowMap.tsx`
+threw `Cannot read properties of null (reading 'clientWidth'/'getBoundingClientRect')` on that
+transition. Root cause: two `ResizeObserver`s read `wrap.current!.clientWidth/getBoundingClientRect()`
+without a null guard; a resize notification queued just before unmount (the container shrinking to
+0 as the route unmounts) can still fire after React has nulled the ref but before the observer's own
+`disconnect()` cleanup runs. `/report` is the first destination reachable from `/live` with no map
+of its own, which is why this had never surfaced before — every other link from `/live` lands on a
+page that immediately mounts its own `FlowMap`. Fixed with a plain `if (!wrap.current) return;`
+guard in both callbacks (`components/map/FlowMap.tsx`) — re-verified live afterward with Playwright,
+navigating `/live` → `/report` with no console errors.
+
+---

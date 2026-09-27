@@ -15,6 +15,7 @@ import { approve, openLeverWhy, opsLevers, orderSentAt, skipLever, store } from 
 import { ORDER_KIND, ordersFor, sendOrderToTelegram } from '@/components/console/OrdersPanel';
 import { Button, cx, Pill } from '@/components/ui';
 import type { Lever } from '@/engine';
+import { NugenAdvisoryCard } from './NugenAdvisoryPanel';
 
 function Countdown({ lever }: { lever: Lever }) {
   const s = useSlice(store, (s) => ({ board: s.board, t: Math.floor(s.tick), expired: s.expired.indexOf(lever.label) >= 0, approved: !!s.approved }));
@@ -88,12 +89,16 @@ function ActionCard({ lever }: { lever: Lever }) {
 
 export default function ActionsDue() {
   const levers = useSlice(store, (s) => opsLevers(s).slice(0, 4));
-  if (!levers.length) return <div className="rounded-xl border border-line bg-panel-2/40 p-4 text-[13px] text-dim">Nothing due. Pravaah is still working out the recommended plan.</div>;
   return (
-    <div className="flex flex-col gap-2">
-      {levers.map((l) => (
-        <ActionCard key={l.label} lever={l} />
-      ))}
+    <div className="flex flex-col gap-3">
+      <NugenAdvisoryCard />
+      {!levers.length ? (
+        <div className="rounded-xl border border-line bg-panel-2/40 p-4 text-[13px] text-dim">
+          Nothing due. Pravaah is still working out the recommended plan.
+        </div>
+      ) : (
+        levers.map((l) => <ActionCard key={l.label} lever={l} />)
+      )}
     </div>
   );
 }

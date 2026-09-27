@@ -20,6 +20,7 @@ import RoomPanel from '@/components/room/RoomPanel';
 import { Logo } from '@/components/ui';
 import StatusBand from './StatusBand';
 import ActionsDue from './ActionsDue';
+import { NugenBadge } from './NugenBadge';
 
 /** Reaches the same 'live' mode the console's own "Skip to the warning" button does — reused
  *  verbatim (rehearse() + skipStory()), not a new state transition. Live Ops has no story/intro
@@ -66,9 +67,12 @@ export default function Live() {
           <span className="text-[13px] font-semibold tracking-[0.2em] text-text">PRAVAAH</span>
         </Link>
         <span className="hidden truncate text-[11.5px] text-dimmer lg:inline">{scnName} · live ops</span>
-        <Link href="/console" className="ml-auto rounded-lg border border-brass-dim/60 px-3 py-1.5 text-[12.5px] text-brass hover:bg-panel-2">
-          Full console →
-        </Link>
+        <div className="ml-auto flex items-center gap-3">
+          <NugenBadge />
+          <Link href="/console" className="rounded-lg border border-brass-dim/60 px-3 py-1.5 text-[12.5px] text-brass hover:bg-panel-2">
+            Full console →
+          </Link>
+        </div>
       </header>
 
       <StatusBand />

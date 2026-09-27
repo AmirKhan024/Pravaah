@@ -33,4 +33,4 @@ export const setOutcome = (id: string, o: RoomOutcome): Promise<void> => backend
 export const setPlan = (id: string, plan: PlanSnapshot): Promise<void> => backend().setPlan(id, plan);
 export const reset = (id: string): Promise<void> => backend().reset(id);
 export const snapshot = (id: string): Promise<RoomSnapshot | null> => backend().snapshot(id);
-export const phoneView = (id: string, pid: string): Promise<PhoneView> => backend().phoneView(id, pid);
+export const phoneView = (id: string, pid: string, knownMe?: Participant): Promise<PhoneView> => backend().phoneView(id, pid, knownMe);

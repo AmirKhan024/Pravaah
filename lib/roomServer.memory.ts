@@ -149,10 +149,10 @@ export async function snapshot(id: string): Promise<RoomSnapshot | null> {
   };
 }
 
-export async function phoneView(id: string, pid: string): Promise<PhoneView> {
+export async function phoneView(id: string, pid: string, knownMe?: Participant): Promise<PhoneView> {
   const r = rooms.get(id.toUpperCase());
   if (!r) return { ok: false, now: Date.now() };
-  const me = r.participants.get(pid);
+  const me = knownMe ?? r.participants.get(pid);
   if (!me) return { ok: false, now: Date.now() };
   const cohort = r.cohorts.find((c) => c.id === me.cohort);
   const msgs = r.broadcast?.messages[me.cohort];

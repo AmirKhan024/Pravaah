@@ -1150,3 +1150,24 @@ Playwright, confirmed it fixed (Room B now joins correctly, two independent
 explicitly-requested change, not something to do inline while fixing a stuck-loading screen.
 
 ---
+
+## 2026-09-27 — "Simulate 24 phones" fixed (two more real bugs)
+
+Reported: the button did nothing visible. Root-caused with server-side logging (full detail in
+DECISIONS.md) to two bugs, both now fixed and live-verified:
+
+1. **`lib/room.ts`'s `refresh()`** had no protection against out-of-order network responses — fired
+   from a Realtime subscription, a poll, and explicit calls all at once, an older/slower response
+   could overwrite newer, correct state. Fixed with an issue-sequence guard.
+2. **The actual blocker**: simulated phones' ids were generated from a seeded RNG with a *constant*
+   seed for every fresh room, so every room's first "Simulate 24 phones" click produced the exact
+   same 24 ids — which collided with the global `participants.id` primary key (same schema fact as
+   the earlier /join fix) and silently reused an older room's participant instead of joining the
+   current one. Fixed by making the id itself unique per click; the seeded RNG still controls the
+   documented, reproducible response distribution, just not identity.
+
+**Verified**: `tsc --noEmit` clean; `npx vitest run` 174/174; live-verified with Playwright — a
+fresh room's first "Simulate 24 phones" now shows 24 phones distributed across all 10 cohorts
+within seconds, confirmed via the room panel's own live counts.
+
+---

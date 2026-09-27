@@ -34,7 +34,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         if (typeof b.pid !== 'string' || b.pid.length > 64) return NextResponse.json({ ok: false }, { status: 400 });
         const p = await join(id, b.pid, lang(b.lang), !!b.simulated);
         if (!p) return NextResponse.json({ ok: false, error: 'no such room' }, { status: 404 });
-        return NextResponse.json(await phoneView(id, b.pid));
+        // pass the just-joined participant straight through — a fresh re-query here raced the
+        // insert it was reading back under rapid-fire joins (see phoneView's own doc comment)
+        return NextResponse.json(await phoneView(id, b.pid, p));
       }
       case 'seen': {
         if (typeof b.pid !== 'string') return NextResponse.json({ ok: false }, { status: 400 });

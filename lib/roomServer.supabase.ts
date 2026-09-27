@@ -219,10 +219,23 @@ export async function snapshot(id: string): Promise<RoomSnapshot | null> {
   };
 }
 
-export async function phoneView(id: string, pid: string): Promise<PhoneView> {
+/**
+ * `knownMe`, when given, skips the participants re-query entirely — join() (below) already has
+ * every field this needs from the very insert/update it just did. Passing it is what fixes a real,
+ * confirmed race: calling phoneView(id, pid) right after join() inserts that pid, as the 'join'
+ * case in app/api/room/[id]/route.ts used to do unconditionally, hit a read-after-write gap under
+ * rapid-fire joins (Simulate 24 phones does 24 of these back to back) — the SELECT sometimes ran
+ * before the just-committed INSERT was visible to it, so `me` came back null and the whole join
+ * silently reported `{ok:false}` with no error anywhere. Building the response straight from the
+ * data join() already holds removes the redundant read (and the race) altogether, rather than
+ * papering over it with a retry loop. See docs/DECISIONS.md.
+ */
+export async function phoneView(id: string, pid: string, knownMe?: Participant): Promise<PhoneView> {
   const room = await getRoomRow(id);
   if (!room) return { ok: false, now: Date.now() };
-  const { data: me } = await db().from('participants').select('id, cohort, lang, joined_at, simulated, group_size').eq('id', pid).eq('room_id', room.id).maybeSingle();
+  const me = knownMe
+    ? { id: knownMe.id, cohort: knownMe.cohort, lang: knownMe.lang, joined_at: new Date(knownMe.joinedAt).toISOString(), simulated: knownMe.simulated, group_size: knownMe.groupSize }
+    : (await db().from('participants').select('id, cohort, lang, joined_at, simulated, group_size').eq('id', pid).eq('room_id', room.id).maybeSingle()).data;
   if (!me) return { ok: false, now: Date.now() };
   const cohort = room.cohorts.find((c) => c.id === me.cohort);
   const msgs = room.broadcast?.messages[me.cohort];

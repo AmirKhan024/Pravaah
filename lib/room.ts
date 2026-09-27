@@ -81,12 +81,25 @@ export function visitOrigins(scn: Scenario, res: SimResult): VisitOrigin[] {
 let poll: ReturnType<typeof setInterval> | undefined;
 let channel: RealtimeChannel | null = null;
 
+// A real bug this fixed (see docs/DECISIONS.md): refresh() fires from three independent sources —
+// the Realtime subscription (once per row change, so a burst of 24 joins fires it ~24 times), a
+// 1-4s poll, and explicit calls like the one at the end of simulateRoom() — all in flight at once,
+// with no guarantee they resolve in the order they were issued. An OLDER, slower request (e.g. the
+// very first refresh() called the instant the room opens, with 0 participants, queued behind a
+// burst of concurrent traffic to Supabase) can resolve AFTER a newer one and silently overwrite
+// correct, current state with a stale snapshot — "Simulate 24 phones" successfully joining 24
+// phones, then the panel settling back to showing 0. Fixed by only ever applying the result of the
+// most-recently-ISSUED refresh; a late-arriving older response is discarded, never applied.
+let refreshSeq = 0;
 async function refresh() {
   const id = get().id;
   if (!id || get().offline) return;
+  const seq = ++refreshSeq;
   try {
     const r = await fetch(`/api/room/${id}`, { cache: 'no-store' });
-    if (r.ok) set({ snap: await r.json() });
+    if (!r.ok) return;
+    const j = await r.json();
+    if (seq === refreshSeq) set({ snap: j });
   } catch {
     /* keep last snapshot */
   }
@@ -265,7 +278,14 @@ export async function simulateRoom(n = 24) {
   }
   const ids: string[] = [];
   for (let i = 0; i < n; i++) {
-    const pid = 'sim-' + Math.floor(rnd() * 1e9).toString(36);
+    // NOT rnd() here — participants.id is a single global primary key across every room (see
+    // docs/DECISIONS.md), and rnd() is seeded from a constant (4242) plus this fresh room's own
+    // participant count (0), so every room's first "Simulate 24 phones" click generated the exact
+    // same 24 pids. join() found them already belonging to an EARLIER room and silently returned
+    // that stale participant instead of inserting a new one for this room — the button reported
+    // success but nothing ever actually joined the room the button was clicked in. rnd() still
+    // seeds every response drawn below, exactly as documented; only the id itself must be unique.
+    const pid = 'sim-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     ids.push(pid);
     await post('join', { pid, lang: (['mr', 'hi', 'en'] as Lang[])[i % 3], simulated: true });
   }

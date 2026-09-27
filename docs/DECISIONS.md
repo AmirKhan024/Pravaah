@@ -616,3 +616,45 @@ confirmed via two distinct `pravaah_pid_<roomId>` keys in localStorage and a cor
 for Room B.
 
 ---
+
+## 2026-09-27 — "Simulate 24 phones" was silently a no-op: two more real bugs, found by adding server-side logging
+
+Reported: clicking "Simulate 24 phones" showed no phones joining. Root-caused with temporary
+`console.log` instrumentation on both the client (`lib/room.ts`) and the server (`lib/roomServer.supabase.ts`
+— server-side logs land in the dev server's own terminal/log file, not the browser console, which
+is why the first pass of logging looked clean until logging was added there too). Two distinct bugs:
+
+**Bug 3 — `refresh()` had no protection against out-of-order responses.** It's called from three
+independent, unsynchronized sources: a Realtime subscription (fires once per DB row change, so a
+burst of 24 joins fires it ~24 times), a 1-4s poll, and explicit calls (`simulateRoom()`'s own final
+`await refresh()`). Nothing stopped an OLDER, slower in-flight request (e.g. the very first refresh,
+issued the instant the room opens with 0 participants, competing for the same network path as 24
+more requests right behind it) from resolving AFTER a newer one and overwriting correct state with
+a stale snapshot. Fixed with a monotonic issue-sequence number: only the result of the
+most-recently-*issued* refresh is ever applied; anything else that resolves late is discarded.
+
+**Bug 4 (the actual blocker) — `simulateRoom()`'s "phones" all collided with earlier rooms'.**
+`participants.id` is a global primary key (the same underlying schema fact behind Bug 2, days
+earlier). The pid generator for each simulated phone was `'sim-' + Math.floor(rnd() * 1e9).toString(36)`,
+where `rnd` is `mulberry32(4242 + participants.length)` — seeded from a *constant* plus a
+freshly-opened room's own (zero) participant count. Every room's very first "Simulate 24 phones"
+click therefore generated the **exact same 24 pids**, every time, in every room, forever.
+`join()`'s "already joined?" check (global, not room-scoped — see Bug 2) found those pids already
+belonging to whichever OLDER room first created them, and returned that stale participant as if it
+were a successful join — `ok: true`, no error anywhere — while never actually inserting a row for
+the *current* room. The button looked like it worked and did nothing. Confirmed directly: server
+logs showed zero `insert` calls at all during a 24-iteration loop that reported 24 successes.
+
+Fixed by making the phone id itself unique per invocation (`Date.now().toString(36) +
+Math.random().toString(36)`), while leaving `rnd()` exactly as documented for what it's actually
+meant to control — the seeded, reproducible distribution of *responses* (accept/decline/etc.),
+never the identity of who's responding. Verified live: a fresh room's first "Simulate 24 phones"
+click now distributes across all 10 cohorts correctly (24 phones total, matching population share)
+and the panel updates within seconds.
+
+**Still open**: `join()` still has no defense if a pid genuinely collides across rooms for some
+other reason (the schema still allows it — see Bug 2's note on the deferred composite-key
+migration). Both known ways to hit that (real visitor phones, simulated phones) are now fixed at
+the call site; a determined third case isn't structurally prevented.
+
+---

@@ -80,4 +80,16 @@ describe('playbookBenefit + dueActions (against the real sample scenario)', () =
     const lateCheck = dueActions(actions, '2026-12-25', '2026-12-24', scn, base, scn.gatesOpenTick, { waits }).find((a) => a.leadDays === 3)!;
     expect(lateCheck.overdue).toBe(true); // do-by 2026-12-22 has passed by 2026-12-24
   });
+
+  it('trigger-conditional rows (no lead_days — the weather/postponement playbook items) are hidden unless weatherTriggered is true', () => {
+    const withoutWeather = dueActions(actions, '2026-12-25', '2026-12-20', scn, base, scn.gatesOpenTick, { waits }, false);
+    expect(withoutWeather.some((a) => a.leadDays == null)).toBe(false);
+    const withWeather = dueActions(actions, '2026-12-25', '2026-12-20', scn, base, scn.gatesOpenTick, { waits }, true);
+    const triggered = withWeather.filter((a) => a.leadDays == null);
+    expect(triggered.length).toBeGreaterThanOrEqual(3); // hotel-extension window, refund policy, re-entry rule
+    expect(triggered.every((a) => a.doByISO === '2026-12-20' && a.daysUntilDue === 0 && !a.overdue)).toBe(true);
+    expect(triggered.some((a) => /hotel-extension/i.test(a.action))).toBe(true);
+    expect(triggered.some((a) => /refund/i.test(a.action))).toBe(true);
+    expect(triggered.some((a) => /re-entry/i.test(a.action))).toBe(true);
+  });
 });

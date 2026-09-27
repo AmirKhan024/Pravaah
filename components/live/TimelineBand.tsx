@@ -11,8 +11,11 @@ import { useState } from 'react';
 import { useSlice } from '@/lib/createStore';
 import { approveTimelineAction, resetDemoDate, setDemoDate, setTimelineStep, skipTimelineAction, store, timelineDueActions } from '@/lib/console';
 import { daysBetweenISO, timelineSentence, todayISO } from '@/lib/timeline';
+import { crossesThreshold, WEATHER_THRESHOLD } from '@/lib/weather';
 import { Button, cx, Pill } from '@/components/ui';
 import type { DoByAction } from '@/engine';
+
+const WEATHER_SOURCE_LABEL = { forecast: 'forecast', climatology: 'climatology (past 10 years)', sample: 'sample weather' } as const;
 
 function DueCard({ a }: { a: DoByAction }) {
   return (
@@ -59,6 +62,7 @@ export default function TimelineBand() {
     timelineDecisions: st.timelineDecisions,
     scn: st.scn,
     base: st.base,
+    weather: st.weather,
   }));
   const due = expanded ? timelineDueActions(store.getState()) : [];
 
@@ -79,6 +83,14 @@ export default function TimelineBand() {
               reset
             </button>
           </Pill>
+        ) : null}
+
+        {s.weather ? (
+          <span title={s.weather.label}>
+            <Pill tone={crossesThreshold(s.weather) ? 'danger' : 'default'}>
+              {s.weather.chancePct}% rain · {WEATHER_SOURCE_LABEL[s.weather.source]}
+            </Pill>
+          </span>
         ) : null}
 
         {s.timeline ? (
@@ -115,6 +127,17 @@ export default function TimelineBand() {
 
       {expanded ? (
         <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3 sm:flex-row">
+          {s.weather ? (
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <div className="kicker !mb-0">Weather</div>
+              <p className="text-[12px] text-dim">{s.weather.label}</p>
+              <p className="text-[11.5px] text-dimmer">
+                {crossesThreshold(s.weather)
+                  ? `Crosses the threshold (${s.weather.chancePct}% ≥ ${WEATHER_THRESHOLD.probabilityPct}% and ${s.weather.amountMm}mm ≥ ${WEATHER_THRESHOLD.amountMm}mm) — the rain patch is applied.`
+                  : `Below the threshold (${WEATHER_THRESHOLD.probabilityPct}% / ${WEATHER_THRESHOLD.amountMm}mm) — Calm on weather.`}
+              </p>
+            </div>
+          ) : null}
           {s.timeline ? (
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <div className="kicker !mb-0">When does it become a problem?</div>

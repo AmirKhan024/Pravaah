@@ -57,6 +57,20 @@ export function tripwireFiredAlert(label: string, failRatePct: number, backupLev
   };
 }
 
+/** Slice 2 (Weather): the forecast/climatology reading crossed WEATHER_THRESHOLD. Built entirely
+ *  from the reading's own already-real, already-sourced numbers (lib/weather.ts) — nothing here
+ *  invents a probability or amount. Reuses the 'tripwire_fired' kind: the behaviour (apply the
+ *  patch, notify ops, propose the postponement playbook) is the same shape as a Red Team tripwire
+ *  even though the trigger is a weather reading, not a stress-tested "breaks when" factor. */
+export function weatherThresholdAlert(label: string, source: 'forecast' | 'climatology' | 'sample'): TelegramAlert {
+  return {
+    kind: 'tripwire_fired',
+    kindLabel: 'Weather tripwire',
+    title: `Weather tripwire crossed (${source})`,
+    text: `${label} This crosses Pravaah's rain threshold — the rain patch (fewer effective lanes, slower cabs, later arrivals) is now applied to the rest of the evening. Check the postponement playbook: hotel-extension window, refund policy, re-entry rule.`,
+  };
+}
+
 export function actionStoppedWorkingAlert(planName: string, wasCrush: number, nowCrush: number): TelegramAlert {
   return {
     kind: 'action_stopped_working',

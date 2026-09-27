@@ -395,3 +395,58 @@ wait in the currently-loaded snapshot, never a hardcoded gate id, so it stays ho
 dataset).
 
 ---
+
+## 2026-09-27 — Weather (Slice 2): reused the existing rain lever, added only the real data source
+
+**What already existed vs. what this slice actually built.** Before writing any code, traced
+`rain` end-to-end: `lib/whatifParse.ts`'s `WhatIfSpec.rain`, `engine/whatif.ts`'s `applyRain()`
+(cuts lane throughput, slows/shrinks cab and rail cohorts), `engine/redTeam.ts`'s stress grid, and
+`lib/monitor.ts`'s `firedTripwires()`/`buildObservedScenario()` were all already fully wired —
+rain has been a complete, simulated, tripwire-capable lever since before this slice. So Slice 2 is
+genuinely just "add a real trigger for the existing lever," not a new rain model: `lib/weather.ts`
+only ever decides *whether* to call the pre-existing `reportObserved({ rain: true }, ...)`, and
+never touches `applyRain` or any simulated number itself.
+
+**Verified Open-Meteo's current API shape before coding** (both endpoints fetched live,
+2026-09-27): forecast (`api.open-meteo.com/v1/forecast`, `hourly=precipitation_probability,precipitation`,
+16-day horizon) and historical archive (`archive-api.open-meteo.com/v1/archive`,
+`daily=precipitation_sum`, ERA5 back to 1940). No API key needed for either. Confirmed the forecast
+response's actual JSON shape with a live `curl` against DY Patil's coordinates for a near-term date
+before trusting my own parsing of it.
+
+**Climatology's "did it rain" bar is a separate constant from the acting threshold.**
+`RAIN_DAY_MM = 1` (in `lib/weather.ts`) decides whether a single historical day counts as "it
+rained" for the "X of the last 10 years" count; `WEATHER_THRESHOLD` (`{ probabilityPct: 60,
+amountMm: 4 }`) decides whether *today's* reading is bad enough to act on. Conflating them would
+have meant a light-drizzle year could either wrongly count as "rained" in the history, or wrongly
+fail to trigger the threshold that's supposed to be about real risk — they answer different
+questions and are kept as two separate, clearly-named numbers rather than one overloaded config.
+
+**Climatology years are anchored to the real calendar year, not the match year.** For a match date
+2+ years out, "the last 10 years" means the 10 real calendar years before *now*, not before the
+(possibly not-yet-real) match year — asking "how often has it rained on Dec 25" only makes sense
+against years that have actually happened.
+
+**A network failure (or DEMO_OFFLINE) always resolves to the labelled sample reading, never
+throws.** `fetchWeather()` catches internally and returns `SAMPLE_WEATHER` (tagged `source:
+'sample'`, chancePct low enough it can never itself cross the threshold) rather than leaving
+`ConsoleState.weather` null or rejecting — Live Ops must never block or blank out because a
+weather API hiccupped mid-demo.
+
+**The 3 rain/postponement playbook rows (hotel-extension window, refund policy, re-entry rule) are
+trigger-conditional, not calendar-dated.** `engine/playbook.ts`'s `PlaybookAction.leadDays` is
+`null` for these three (see `data/playbooks.csv`); `dueActions()` now takes a `weatherTriggered`
+flag and only includes `leadDays == null` rows when it's true, due immediately ("do by" today) —
+they don't clutter the Timeline's "do by" list on an ordinary dry-weather day, and appear the
+moment the forecast actually crosses the threshold, exactly like the tripwire-fired backup plan
+they're modelled after.
+
+**Live-verified against the real APIs, not just mocks.** `npm run dev` + Playwright against the
+bundled sample scenario (match date ~89 days out, i.e. beyond the forecast horizon) showed a real
+climatology chip — "0% RAIN · CLIMATOLOGY (PAST 10 YEARS)" — fetched live from Open-Meteo's archive
+API for DY Patil's real coordinates. Separately confirmed the forecast endpoint's live response
+shape with a direct `curl` for a near-term date (the bundled sample's match date doesn't fall
+inside the 16-day forecast window, so the forecast branch itself is covered by `lib/__tests__/weather.test.ts`'s
+mocked-fetch tests, not this particular live run).
+
+---

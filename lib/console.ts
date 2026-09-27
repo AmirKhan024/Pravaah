@@ -48,6 +48,7 @@ import { appendLedger, loadLedger, type LedgerEntry, type LedgerType } from './l
 import { bucketStatuses, type BucketId, type BucketInfo } from './buckets';
 import { buildObservedScenario, firedTripwires, isObservedEmpty, mergeObserved, type ActionState } from './monitor';
 import { buildTimelineData, defaultMatchDateISO, stepForDate, todayISO, type TimelineData } from './timeline';
+import { crossesThreshold, fetchWeather, WEATHER_THRESHOLD, type WeatherReading } from './weather';
 import {
   actionExpiringAlert,
   actionStoppedWorkingAlert,
@@ -55,6 +56,7 @@ import {
   newActionAlert,
   statusChangedAlert,
   tripwireFiredAlert,
+  weatherThresholdAlert,
 } from './telegramMessages';
 
 export type Mode = 'intro' | 'story' | 'live' | 'replay' | 'free';
@@ -177,6 +179,10 @@ export interface ConsoleState {
   playbook: PlaybookAction[];
   /** playbook action id -> the organiser's decision, logged to the Black Box the moment it's made */
   timelineDecisions: Record<string, 'approved' | 'skipped'>;
+
+  /* ---- Weather (Slice 2): real data at every horizon, lib/weather.ts ---- */
+  /** null until boot()'s fetch resolves (forecast, climatology, or the offline sample) */
+  weather: WeatherReading | null;
 }
 
 /** loaded once via loadScenario(); everything a data-driven scenario carries beyond the Scenario itself */
@@ -296,6 +302,7 @@ function initial(scn: Scenario = BASE_SCN, bundle: ScenarioBundle | null = STORE
     demoDateISO: null,
     playbook: [],
     timelineDecisions: {},
+    weather: null,
   };
 }
 
@@ -394,7 +401,8 @@ export function resetDemoDate() {
 export function timelineDueActions(s: ConsoleState = get()): DoByAction[] {
   if (!s.playbook.length) return [];
   const today = s.demoDateISO ?? todayISO();
-  return dueActions(s.playbook, s.matchDateISO, today, s.scn, s.base, s.scn.gatesOpenTick)
+  const weatherTriggered = !!s.weather && crossesThreshold(s.weather);
+  return dueActions(s.playbook, s.matchDateISO, today, s.scn, s.base, s.scn.gatesOpenTick, {}, weatherTriggered)
     .filter((a) => !s.timelineDecisions[a.id])
     .slice(0, 3);
 }
@@ -443,6 +451,30 @@ async function loadPlaybook(): Promise<PlaybookAction[]> {
   }
 }
 
+/** Slice 2 (Weather): fetches once per scenario load (real forecast/climatology, or the offline
+ *  sample) for `scn`'s own venue zone lat/lng and match date, then — if it crosses
+ *  WEATHER_THRESHOLD — applies the existing rain patch via reportObserved() (never a second rain
+ *  model; see engine/whatif.ts's applyRain, already wired through lib/monitor.ts) and sends the
+ *  ops Telegram alert. A network hiccup can never block this: fetchWeather() itself always
+ *  resolves (falls back to the sample reading) rather than throwing. */
+async function fetchWeatherForScenario() {
+  const s = get();
+  const venue = s.scn.zones.find((z) => z.type === 'venue');
+  if (!venue) return;
+  const wrap = (m: number) => ((m % 1440) + 1440) % 1440;
+  const gatesOpenMin = wrap(s.scn.t0Min + s.scn.gatesOpenTick);
+  const showStartMin = wrap(s.scn.t0Min + s.scn.showStartTick);
+  const reading = await fetchWeather(venue.lat, venue.lng, s.matchDateISO, gatesOpenMin, showStartMin);
+  set({ weather: reading });
+  if (!crossesThreshold(reading)) return;
+  reportObserved(
+    { rain: true },
+    `${reading.label} Crosses the rain threshold (${WEATHER_THRESHOLD.probabilityPct}%/${WEATHER_THRESHOLD.amountMm}mm) — applying the rain patch (fewer effective lanes, slower cabs, later arrivals) to the rest of the evening.`,
+  );
+  const a = weatherThresholdAlert(reading.label, reading.source);
+  sendTelegramAlert(a.kindLabel, a.title, a.text, 'tripwire_fired', { reword: true, summary: 'Sent the weather tripwire alert to the ops Telegram channel.' });
+}
+
 /* ---------------- boot ---------------- */
 let booted = false;
 export function boot() {
@@ -450,6 +482,7 @@ export function boot() {
   booted = true;
   loadLedger().then((ledger) => set({ ledger }));
   loadPlaybook().then((playbook) => set({ playbook }));
+  fetchWeatherForScenario();
   const s = get();
   const watch = s.scn.zones.findIndex((z) => z.id === 'fc_west');
   engine()

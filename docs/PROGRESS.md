@@ -946,3 +946,53 @@ exist in `lib/telegram.ts` for it to build on.
   + driving it — recommend `/run-skill-generator` if this becomes a recurring need.
 
 ---
+
+## 2026-09-27 — Weather (Slice 2 of 4): real forecast/climatology, honest at every horizon
+
+**Built**
+- `lib/weather.ts` (new): `fetchWeather(lat, lng, matchDateISO, gatesOpenMin, showStartMin)` — real
+  Open-Meteo forecast (hourly precipitation/probability, within its ~16-day horizon, restricted to
+  the gates-open..kickoff+3h window) or, beyond that horizon, the historical archive API's
+  "X of the last 10 years it rained around this date"; offline (`NEXT_PUBLIC_DEMO_OFFLINE=1`) or on
+  any network failure, a clearly labelled bundled sample reading. One shared `WEATHER_THRESHOLD`
+  config (`{ probabilityPct: 60, amountMm: 4 }`) and `crossesThreshold()` — the single place any
+  code decides whether a reading is bad enough to act on.
+- `lib/console.ts`: `ConsoleState.weather`, and `fetchWeatherForScenario()` (called from `boot()` —
+  refetches on every Timeline step switch, since a different snapshot's date can fall on a
+  different side of the forecast horizon). Crossing the threshold calls the *existing*
+  `reportObserved({ rain: true }, ...)` (applies `engine/whatif.ts`'s already-built `applyRain`
+  patch to the rest of the evening, exactly like a staff-reported rain delay would) and sends a new
+  `weatherThresholdAlert` (`lib/telegramMessages.ts`) to the ops Telegram channel.
+- `data/playbooks.csv` / `engine/playbook.ts`: 3 new trigger-conditional rows (confirm the
+  hotel-extension window / refund policy / re-entry rule for a postponement), which only appear in
+  the Timeline's "Do by" list once the forecast crosses the threshold (`dueActions()`'s new
+  `weatherTriggered` parameter), immediately due, never cluttering an ordinary dry-weather day.
+- `components/live/TimelineBand.tsx`: a small weather chip in the compact row (`"0% rain ·
+  climatology (past 10 years)"`, red-tinted once it crosses the threshold) plus the full sentence
+  and threshold comparison behind "More." The existing `weatherBucket()`
+  (`lib/buckets.ts`) already reads `s.observed` for its own "Weather & delays" status-dot chip, so
+  that surface picked this up with zero changes — exactly the reuse the brief asked for.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 149/149 (the previously-flaky perf timing test in
+  `engine/__tests__/venues.test.ts` passed clean this run too). New tests:
+  `lib/__tests__/weather.test.ts` (5, mocked fetch — forecast-vs-climatology selection by horizon,
+  threshold logic, network-failure and DEMO_OFFLINE fallback) and 1 new case in
+  `engine/__tests__/playbook.test.ts` for the trigger-conditional rows.
+- **Verified against the real Open-Meteo API**, not just mocks: confirmed the forecast endpoint's
+  live JSON shape with `curl` against DY Patil's real coordinates for a near-term date, and — via
+  Playwright against `npm run dev` on the bundled sample scenario — watched Live Ops fetch and
+  render a real climatology reading live ("0% RAIN · CLIMATOLOGY (PAST 10 YEARS)" for the sample's
+  Dec 25 match date, ~89 days out and so beyond the forecast horizon, exactly as designed).
+
+**Still open / deferred**
+- Didn't live-drive the forecast branch or an actual threshold-crossing end to end in the browser
+  (the bundled sample's match date happens to fall outside the 16-day forecast window, and no real
+  upcoming date near DY Patil crossed the rain threshold today) — that path is covered by
+  `lib/__tests__/weather.test.ts`'s mocked-fetch tests and the direct `curl` shape-check instead.
+  Worth a manual re-check with a match date inside the next 2 weeks.
+- Climatology's per-year fetch (10 parallel requests) has no explicit rate-limit handling; Open-Meteo's
+  free tier is generous enough this hasn't been an issue, but a burst of concurrent users hitting
+  climatology at once isn't something this pass tested.
+
+---

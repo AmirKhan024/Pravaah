@@ -106,15 +106,27 @@ export function playbookBenefit(scn: Scenario, base: SimResult, action: Playbook
   return Math.max(0, base.crushMin - r.crushMin);
 }
 
-/** Every action whose do-by date falls within `windowDays` of `todayISO` (default: everything not
- *  yet done), nearest-due first, each carrying its benefit if the row is simulate-able. This is
- *  what Live Ops's Timeline row shows as "the next 1 to 3 actions with DATE deadlines." */
-export function dueActions(actions: PlaybookAction[], matchDateISO: string, todayISO: string, scn: Scenario, base: SimResult, fromTick: number, opts: SimOptions = {}): DoByAction[] {
+/** Every action due, nearest-due first, each carrying its benefit if the row is simulate-able.
+ *  This is what Live Ops's Timeline row shows as "the next 1 to 3 actions with DATE deadlines."
+ *  Calendar rows (leadDays set) always show; a row with no leadDays (the weather/postponement
+ *  playbook items — hotel-extension window, refund policy, re-entry rule) is trigger-conditional
+ *  and only appears once `weatherTriggered` is true (Slice 2: the forecast crossed the rain
+ *  threshold), due immediately ("do by" today) since the trigger just fired. */
+export function dueActions(
+  actions: PlaybookAction[],
+  matchDateISO: string,
+  todayISO: string,
+  scn: Scenario,
+  base: SimResult,
+  fromTick: number,
+  opts: SimOptions = {},
+  weatherTriggered = false,
+): DoByAction[] {
   return actions
-    .filter((a) => a.leadDays != null)
+    .filter((a) => a.leadDays != null || weatherTriggered)
     .map((a) => {
-      const doByISO = addDays(matchDateISO, -(a.leadDays as number));
-      const daysUntilDue = daysBetween(todayISO, doByISO);
+      const doByISO = a.leadDays != null ? addDays(matchDateISO, -a.leadDays) : todayISO;
+      const daysUntilDue = a.leadDays != null ? daysBetween(todayISO, doByISO) : 0;
       return {
         ...a,
         doByISO,

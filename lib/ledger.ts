@@ -25,7 +25,10 @@ export type LedgerType =
   | 'action_stopped_working'
   | 'decision_recorded'
   | 'action_expiring'
-  | 'status_changed';
+  | 'status_changed'
+  | 'prediction_frozen'
+  | 'actuals_received'
+  | 'recalibrated';
 
 export interface LedgerEntry {
   seq: number;

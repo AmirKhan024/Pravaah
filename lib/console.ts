@@ -6,8 +6,11 @@
 import {
   clockFor,
   comma,
+  compareGates,
+  demoActualFeed,
   dueActions,
   dyPatil,
+  freezePrediction,
   loadScenarioFromRows,
   parseCsv,
   parsePlaybook,
@@ -15,9 +18,11 @@ import {
   probeWaits,
   PROFILE_NAMES,
   RAVI,
+  recalibrate,
   retime,
   simulate,
   tracePerson,
+  trustForGate,
   applyWhatIf,
   WHATIFS,
   type AblationRow,
@@ -27,10 +32,14 @@ import {
   type DataField,
   type DoByAction,
   type EnsembleResult,
+  type GateBuckets,
+  type GateComparison,
   type Intervention,
   type Lever,
   type PlaybookAction,
+  type PredictedSnapshot,
   type ProfileName,
+  type RecalibrationResult,
   type RedTeamResult,
   type RejectedRow,
   type ResourceRow,
@@ -183,6 +192,17 @@ export interface ConsoleState {
   /* ---- Weather (Slice 2): real data at every horizon, lib/weather.ts ---- */
   /** null until boot()'s fetch resolves (forecast, climatology, or the offline sample) */
   weather: WeatherReading | null;
+
+  /* ---- Predicted vs Actual (Slice 3), engine/actuals.ts ---- */
+  /** frozen at the first approval — "what we promised": per-gate arrivals per bucket, peak, crush */
+  predicted: PredictedSnapshot | null;
+  /** per-gate scan counts per bucket, from a demo feed or a real pasted/uploaded log */
+  actualBuckets: GateBuckets | null;
+  actualsSource: 'none' | 'demo-feed' | 'real';
+  comparison: GateComparison[] | null;
+  recalibration: RecalibrationResult | null;
+  /** per-gate trust badge from the deterministic <=15%-error rule (engine/actuals.ts's trustForGate) */
+  gateTrust: Record<string, 'claimed' | 'verified'>;
 }
 
 /** loaded once via loadScenario(); everything a data-driven scenario carries beyond the Scenario itself */
@@ -303,6 +323,13 @@ function initial(scn: Scenario = BASE_SCN, bundle: ScenarioBundle | null = STORE
     playbook: [],
     timelineDecisions: {},
     weather: null,
+
+    predicted: null,
+    actualBuckets: null,
+    actualsSource: 'none',
+    comparison: null,
+    recalibration: null,
+    gateTrust: {},
   };
 }
 
@@ -419,6 +446,62 @@ export function skipTimelineAction(a: DoByAction) {
   set((s) => ({ timelineDecisions: { ...s.timelineDecisions, [a.id]: 'skipped' } }));
   log('decision_recorded', `Not now: "${a.action}" (was due ${a.doByISO}, ${a.owner}).`, { id: a.id, action: a.action, owner: a.owner, doByISO: a.doByISO, decision: 'skipped' });
 }
+/* ---------------- Predicted vs Actual (Slice 3) ---------------- */
+
+/** Freezes "what we promised" into the Black Box the moment a plan is first approved — per gate,
+ *  expected arrivals per 10-min bucket, peak bucket, peak density, dangerous minutes
+ *  (engine/actuals.ts's freezePrediction, straight off the just-approved SimResult). */
+function freezePredictionNow(scn: Scenario, result: SimResult, at: number) {
+  const predicted = freezePrediction(scn, result, at);
+  set({ predicted, actualBuckets: null, actualsSource: 'none', comparison: null, recalibration: null, gateTrust: {} });
+  log('prediction_frozen', `Froze the prediction at ${clock(at)}: ${predicted.crushMin} dangerous minutes promised across ${Object.keys(predicted.perGate).length} gates.`, {
+    at,
+    crushMin: predicted.crushMin,
+    peakBucket: predicted.peakBucket,
+  });
+}
+
+function applyActuals(buckets: GateBuckets, source: 'demo-feed' | 'real', note: string) {
+  const s = get();
+  if (!s.predicted) return;
+  const comparison = compareGates(s.predicted, buckets);
+  const gateTrust: Record<string, 'claimed' | 'verified'> = {};
+  comparison.forEach((c) => (gateTrust[c.gateId] = trustForGate(c.pctDiff)));
+  set({ actualBuckets: buckets, actualsSource: source, comparison, gateTrust, recalibration: null });
+  log('actuals_received', note, { source, totals: comparison.map((c) => ({ gate: c.gateId, predicted: c.predictedTotal, actual: c.actualTotal, pctDiff: c.pctDiff })) });
+}
+
+/** Brief: "a Demo feed generator that produces a plausible scan stream ... with a few injected
+ *  disruptions ... always tagged 'demo feed.'" Freezes a prediction first if none exists yet (e.g.
+ *  no plan has been approved), so the demo can be shown without requiring that step first. */
+export function generateDemoActualFeed() {
+  const s = get();
+  if (!s.predicted) freezePredictionNow(s.scn, s.cur, Math.floor(s.tick));
+  const predicted = get().predicted!;
+  const buckets = demoActualFeed(predicted, 42);
+  applyActuals(buckets, 'demo-feed', 'Loaded a demo scan feed (seeded, with a late-train and a slow-lane disruption injected) — tagged "demo feed," never presented as real.');
+}
+
+/** Brief: "(a) a paste/upload box that reuses the registrations column-mapper (Groq maps columns;
+ *  code counts)." Called with already-mapped, already-validated buckets (lib/scans/apply.ts is the
+ *  only place a raw count is ever read) — this function just applies and logs them. */
+export function submitActualScans(buckets: GateBuckets, rowCount: number, rejected: number) {
+  applyActuals(buckets, 'real', `Loaded ${rowCount} real gate-scan row${rowCount === 1 ? '' : 's'}${rejected ? ` (${rejected} rejected — unresolved gate, time, or count)` : ''}.`);
+}
+
+/** Brief: "a deterministic recalibration ..., then re-run the REST of the evening from now (reuse
+ *  the monitor loop)." Re-simulates the whole scenario under the fitted per-gate multiplier/shift —
+ *  the same shape the monitor loop already uses (buildObservedScenario re-simulates the whole
+ *  evening under a patch, never a literal in-place resume) — and swaps it in as the new baseline,
+ *  same lightweight update `runMonitorTick` itself uses (scn/base/cur, tick and mode untouched). */
+export function recalibrateNow() {
+  const s = get();
+  if (!s.predicted || !s.actualBuckets) return;
+  const r = recalibrate(s.scn, s.predicted, s.actualBuckets, s.approved?.ivs ?? [], { waits: s.waits });
+  set({ recalibration: r, scn: r.recalibratedScn, base: r.recalibratedResult, cur: r.recalibratedResult });
+  log('recalibrated', `Recalibrated from the actuals: forecast error ${r.errorBefore}% → ${r.errorAfter}%.`, { errorBefore: r.errorBefore, errorAfter: r.errorAfter, fits: r.fits });
+}
+
 export const viewTick = (s: ConsoleState = get()) => Math.floor(s.peek ?? s.tick);
 
 /* ---------------- ledger ---------------- */
@@ -993,6 +1076,7 @@ export function approve(acceptOverride?: Record<string, number>, roomNote?: stri
     drawer: null,
   });
   caption(`Same evening, same ${comma(s.scn.zones.find((z) => z.type === 'venue')?.capacity || 0)} people. This time you acted at ${clock(at)}.`);
+  if (!s.approved) freezePredictionNow(s.scn, result, at);
   if (!s.approved) {
     log('plan_approved', `Approved "${plan.name}" at ${clock(at)}: ${s.base.crushMin} → ${result.crushMin} dangerous minutes, ₹${result.rupees}.`, {
       name: plan.name,

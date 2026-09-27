@@ -450,3 +450,55 @@ inside the 16-day forecast window, so the forecast branch itself is covered by `
 mocked-fetch tests, not this particular live run).
 
 ---
+
+## 2026-09-27 — Predicted vs Actual (Slice 3): a real recalibration bug caught live, and the scope calls made to ship it honestly
+
+**A real bug, found by live-testing, not by code review.** The first working version of
+`recalibrate()` re-simulated the recalibrated scenario with **no interventions** (`simulate(recalibratedScn,
+[], opts)`). Live in the browser (approve "Tell Nerul rail that Gate 2 is quieter" — a `nudge`
+reroute — then demo feed → Recalibrate), forecast error went **7.3% → 14.7%, i.e. worse**, not the
+brief's "18% → 6%" shrinking pattern. Root cause: `predicted` had been frozen from a SimResult
+*with* the nudge intervention applied (some of the Nerul cohort actually screens through the alt
+gate), and the demo actuals were generated from that same nudge-affected prediction — but
+recalibration's re-simulation silently dropped the intervention, comparing the fit against a
+*different*, un-nudged evening. Fixed by threading the same `ivs` that produced `predicted` through
+to `recalibrate()`'s re-simulation (`lib/console.ts`'s `recalibrateNow()` now passes
+`s.approved?.ivs ?? []`); pinned with a regression test in `engine/__tests__/actuals.test.ts` that
+fails loudly (not vacuously) if the sample scenario ever stops having an alt-gate cohort to exercise
+this path. **This is exactly why SOURCE_OF_TRUTH's "live-verify, don't just unit-test" discipline
+matters** — the original (buggy) version had a passing unit test too, just with too generous a
+tolerance to catch a real direction reversal.
+
+**Known simplification, disclosed rather than silently accepted:** `applyRecalibration()` maps each
+cohort to *one* gate (the last gate-mode link on its primary `path`) and scales/shifts the whole
+cohort by that gate's fit. A cohort mid-nudge genuinely splits between its primary and alt gate at
+simulate-time; the fit doesn't itself know about that split, so a heavily-rerouted cohort's
+recalibration is an approximation, not exact. Re-including the plan's interventions (the fix above)
+recovers the correct split at re-simulate time regardless, which is why the live error still shrank
+correctly to 1.7% — the approximation only affects *how the fit is computed*, not whether the
+re-simulation itself stays honest.
+
+**Reused, not rebuilt: the registrations column-mapper's actual generic pieces.**
+`lib/registrations/fuzzyMap.ts`'s `resolveGate()` (exact id/name, or a loose substring either way)
+is imported directly into `lib/scans/apply.ts` — it was already gate-agnostic-enough to reuse
+verbatim for scan-log gate names, not just registration origins. The Groq column-mapping endpoint
+(`app/api/llm/scans/route.ts`) mirrors `app/api/llm/registrations/route.ts`'s validation discipline
+(only ever accepts a header name copied verbatim from the given list) but is its own, simpler route
+— scan logs are always tabular (gate, time, count), so there's no free-text-extraction half to
+build, unlike registrations' WhatsApp-style messy-list path.
+
+**Recalibration re-simulates the whole evening, not a literal "resume from now."** The brief says
+"re-run the REST of the evening from now (reuse the monitor loop)." The engine has no mid-run
+resume concept anywhere, including in the monitor loop itself — `buildObservedScenario` always
+re-simulates the *whole* evening under a patch that only changes what's ahead of a lock tick. This
+slice follows that same, already-established shape (`applyRecalibration` clones+adjusts cohorts,
+then a fresh full `simulate()`), rather than inventing a new partial-resume mechanism the rest of
+the codebase doesn't have.
+
+**Trust rule kept to exactly what the brief specifies.** `trustForGate()` is a plain, symmetric
+two-rung rule — `verified` at ≤15% absolute error, `claimed` otherwise — not a 3-rung ladder with an
+invented middle "document-checked" trigger, since the brief only ever describes the 15% rule for
+this context (the claimed→document-checked→verified ladder itself is Slice 4's territory, reused as
+`OwnerTrust`, not redefined here).
+
+---

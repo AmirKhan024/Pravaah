@@ -19,6 +19,7 @@ import { Logo } from '@/components/ui';
 import StatusBand from './StatusBand';
 import TimelineBand from './TimelineBand';
 import ActionsDue from './ActionsDue';
+import ActualsCard from './ActualsCard';
 import StatusDots from './StatusDots';
 import Ticker from './Ticker';
 import MoreMenu from './MoreMenu';
@@ -98,6 +99,7 @@ export default function Live() {
         <aside className="no-print flex min-h-0 flex-col gap-3 overflow-y-auto border-l border-line bg-panel p-4">
           <div className="kicker">Do next</div>
           <ActionsDue />
+          <ActualsCard />
         </aside>
       </div>
 

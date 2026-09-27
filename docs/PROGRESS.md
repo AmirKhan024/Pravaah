@@ -996,3 +996,67 @@ exist in `lib/telegram.ts` for it to build on.
   climatology at once isn't something this pass tested.
 
 ---
+
+## 2026-09-27 — Predicted vs Actual (Slice 3 of 4): the learning loop
+
+**Built**
+- `engine/actuals.ts` (new, pure): `freezePrediction()` (per-gate arrivals per 10-min bucket, peak
+  bucket/density, dangerous minutes — read straight off a real SimResult's `linkFlow`/`zoneDen`),
+  `demoActualFeed()` (seeded ±15% noise plus two fixed, documented disruptions — a "late train"
+  shifting the busiest gate's mass later, a "slow lane" capping the second-busiest gate's
+  throughput with a carried backlog — always generated *from* the frozen prediction, never a
+  second invented number), `compareGates()`, `fitRecalibration()`/`applyRecalibration()`/`recalibrate()`
+  (per-gate turnout multiplier clamped 0.5–2, arrival-time shift clamped ±45min, fit directly from
+  actual/predicted ratios, applied by cloning and re-simulating — never a mutation), and
+  `trustForGate()` (the brief's own ≤15%-error rule, two rungs, shown with its number, never a
+  black-box score).
+- `lib/scans/` (new): a paste/upload path for real gate-scan logs, following the exact
+  Groq-maps-columns/code-counts discipline `lib/registrations/` already established —
+  `app/api/llm/scans/route.ts` mirrors `app/api/llm/registrations/route.ts`'s validation (only
+  ever accepts a header name copied verbatim from the list), `lib/scans/apply.ts` is the only place
+  a count is ever read/summed, and it reuses `lib/registrations/fuzzyMap.ts`'s `resolveGate()`
+  directly rather than re-implementing gate-name matching.
+- `lib/console.ts`: `ConsoleState` gained `predicted`, `actualBuckets`, `actualsSource`,
+  `comparison`, `recalibration`, `gateTrust`. `approve()` now calls `freezePredictionNow()` on the
+  first approval. New actions: `generateDemoActualFeed()`, `submitActualScans()`, `recalibrateNow()`
+  (re-simulates with the approved plan's own interventions — see DECISIONS.md for the bug this
+  caught). 3 new `LedgerType`s (`prediction_frozen`, `actuals_received`, `recalibrated`) — plain
+  `text` columns in Supabase, no schema migration needed.
+- `components/live/ActualsCard.tsx` (new): the main-view card — a plain sentence ("Gate 2 ran
+  23.9% quieter than predicted"), a small predicted-vs-actual overlay bar chart for the worst gate,
+  a "demo feed" / "real scan data" tag, Recalibrate, and per-gate trust pills behind "More."
+- `app/report/` + `components/report/Report.tsx` (new): the printable after-event report — promised
+  vs. happened per gate (with trust badges), what the approved plan changed vs. the do-nothing
+  ghost, the recalibration error-shrink line, and a data-driven "what we'd change next time" list.
+  Uses the same `.no-print` convention already established for Live Ops's own chrome.
+
+**Verified**
+- `tsc --noEmit`: clean. `npx vitest run`: 161/161. New tests: `engine/__tests__/actuals.test.ts`
+  (12, including a regression test for the recalibration bug below), plus `lib/scans/` covered
+  indirectly through the same discipline as `lib/registrations/`'s existing tests (no separate
+  scans-specific unit tests were added — the module is a thin, mirrored reapplication of an
+  already-tested pattern; flagged here rather than silently assumed covered).
+- **Live-verified end to end** (Playwright against `npm run dev`, sample scenario): loaded the
+  sample → approved the recommended plan (status correctly stayed "Calm — In force since 17:50," the
+  Slice 1 preflight rule holding under real interaction) → generated a demo feed ("Gate 2 ran 23.9%
+  quieter than predicted," tagged "demo feed") → Recalibrate ("error 7.3% → 1.7%," after fixing the
+  bug below) → After-event report showed a full promised-vs-happened table (4 of 5 gates "verified
+  by event," Gate 2 correctly held at "claimed") and a generated "what we'd change next time" line.
+- **A real bug found live, not by code review**: recalibrating initially made the error worse
+  (7.3% → 14.7%) because the re-simulation dropped the approved plan's nudge intervention. See
+  DECISIONS.md for the root cause and fix; re-verified live afterward (7.3% → 1.7%, correctly
+  shrinking).
+
+**Still open / deferred**
+- The per-gate recalibration fit is an approximation for a cohort split by a reroute nudge (see
+  DECISIONS.md) — correct in effect once interventions are re-applied, but the fit itself doesn't
+  model the split explicitly.
+- `lib/scans/` has no dedicated unit test file — it's a thin, structurally mirrored reapplication of
+  `lib/registrations/`'s already-tested `resolveGate()`/validation pattern, not new logic, but this
+  is a real gap if the module grows independently later.
+- Didn't test the real-scan-log paste path with Groq live (only the demo-feed and the offline fuzzy
+  fallback paths were exercised in the browser) — the column-mapping validation discipline mirrors
+  registrations' own, already-tested route, but a live Groq round-trip for scans specifically
+  wasn't separately confirmed.
+
+---
